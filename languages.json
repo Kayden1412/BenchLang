@@ -105,6 +105,19 @@
       "requires": ["zig"]
     },
     {
+      "id": "c3",
+      "label": "C3",
+      "mode": "full",
+      "directory": "c3",
+      "build": [["c3c", "compile", "-O1", "src/passgen.c3", "src/rng.c3", "-o", "passgen"]],
+      "clean_paths": ["passgen"],
+      "binary": "passgen",
+      "run": ["./passgen"],
+      "edit_file": "src/rng.c3",
+      "marker": "ALT_RNG_REV_0",
+      "requires": ["c3c"]
+    },
+    {
       "id": "go",
       "label": "Go",
       "mode": "program",

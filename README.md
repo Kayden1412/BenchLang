@@ -66,20 +66,22 @@ A sample of the table formats:
 | C (cc) | file | … | … | … | … | ok |
 | Rust | full | … | … | … | … | ok |
 | Zig | full | … | … | … | … | ok |
+| C3 | full | … | … | … | … | ok |
 
 | Language | Single (ms) | Bulk (ms) | Bulk net (ms) | Bulk pwd/s | Status |
 |---|---:|---:|---:|---:|---|
 | C (cc) | … | … | … | … | ok |
 | Rust | … | … | … | … | ok |
 | Zig | … | … | … | … | ok |
+| C3 | … | … | … | … | ok |
 
 ### Continuous integration
 
 [`.github/workflows/altbench.yml`](.github/workflows/altbench.yml) installs
-C/C++, Rust, Zig, Go, Python, and Node.js on Ubuntu, runs a shortened benchmark
-(`--samples 1 --runtime-samples 3`), fails unless every configured language
-passes both build and runtime validation, and uploads `results.json` and
-`RESULTS.md` as artifacts.
+C/C++, Rust, Zig, C3, Go, Python, and Node.js on Ubuntu, runs a shortened
+benchmark (`--samples 1 --runtime-samples 3`), fails unless every configured
+language passes both build and runtime validation, and uploads `results.json`
+and `RESULTS.md` as artifacts.
 
 ## Measurement rules
 
@@ -94,6 +96,7 @@ dependencies already available".
 | C / C++ | `passgen`, `*.o` |
 | Rust | `target/` (`cargo clean` equivalent) |
 | Zig | `.zig-cache/`, `zig-out/` |
+| C3 | the output binary (C3's global cache is kept) |
 | Go | the output binary (Go's shared build cache is kept) |
 | Python | `__pycache__/` |
 | JavaScript | nothing (no build artifacts) |
@@ -175,6 +178,7 @@ remain:
 | Rust | `/dev/urandom` |
 | Go | `crypto/rand` |
 | Zig | `Io.randomSecure` |
+| C3 | `std::crypto::entropy` (`getrandom`) |
 | Python | `secrets` |
 | JavaScript | `node:crypto` `randomFillSync` |
 
@@ -193,7 +197,7 @@ No `rand()`, `Math.random()`, seeded PRNG, or time-based seed is used.
 |---|---|---|
 | `file` | recompiles changed files, then relinks | C, C++ |
 | `program` | recompiles a package/program unit, may reuse dependency caches | Go |
-| `full` | release build is a whole-program rebuild | Rust, Zig |
+| `full` | release build is a whole-program rebuild | Rust, Zig, C3 |
 | `interpreted` | no native build; `build` is a syntax/bytecode check | Python, JavaScript |
 
 `interpreted` numbers measure the check command, not a native compiler. For

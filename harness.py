@@ -815,7 +815,7 @@ def render_markdown(report: dict) -> str:
             "- `program` — the toolchain recompiles a package/program unit; "
             "dependency caches may still be reused (Go).",
             "- `full` — the release build is a whole-program rebuild, so `edit` "
-            "is expected to be close to `cold` (Rust release, Zig release).",
+            "is expected to be close to `cold` (Rust release, Zig release, C3).",
             "- `interpreted` — there is no native build; the `build` command is a "
             "syntax/bytecode check and the numbers measure that check only "
             "(Python, JavaScript).",

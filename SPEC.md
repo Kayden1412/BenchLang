@@ -55,6 +55,7 @@ CSPRNG, then consumes little-endian 32-bit words from that buffer:
 | Rust | `/dev/urandom` via `std::fs::File` (no external crates) |
 | Go | `crypto/rand` |
 | Zig | `Io.randomSecure` (the OS CSPRNG behind Zig's `Io` interface) |
+| C3 | `std::crypto::entropy` (`getrandom` on Linux) |
 | Python | `secrets` (`os.urandom`) |
 | JavaScript | `node:crypto` `randomFillSync` |
 

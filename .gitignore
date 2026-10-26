@@ -104,3 +104,8 @@ zig-cache/
 zig-out/
 .zig-cache/
 .zig/
+
+# ========================
+# AltBench build outputs
+# ========================
+passgen
