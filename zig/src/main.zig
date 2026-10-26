@@ -169,7 +169,7 @@ pub fn main(init: std.process.Init) !void {
         fail("unknown argument");
     }
 
-    var selected = [_]bool{false} ** 4;
+    var selected: [4]bool = @splat(false);
     var split = std.mem.splitScalar(u8, classes, ',');
     while (split.next()) |part| {
         const name = std.mem.trim(u8, part, " \t");
