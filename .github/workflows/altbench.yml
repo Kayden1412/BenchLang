@@ -1,0 +1,105 @@
+name: AltBench
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: altbench-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  measure:
+    name: Build and runtime benchmark
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+          cache: false
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: "0.16.0"
+
+      - name: Show toolchains
+        run: |
+          cc --version
+          c++ --version
+          rustc --version
+          cargo --version
+          zig version
+          go version
+          python3 --version
+          node --version
+
+      - name: Check harness
+        run: |
+          python3 -m py_compile harness.py
+          python3 harness.py --list
+
+      - name: Run AltBench
+        run: |
+          python3 harness.py --samples 1 --runtime-samples 3
+
+      - name: Verify results
+        run: |
+          python3 - <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          report = json.loads(Path("results.json").read_text())
+          errors = []
+
+          for language in report["languages"]:
+              if language["status"] != "ok":
+                  errors.append(f"{language['id']}: build status {language['status']}")
+                  continue
+
+              runtime = language.get("runtime")
+              if not runtime:
+                  errors.append(f"{language['id']}: runtime missing")
+              elif runtime["status"] != "ok":
+                  errors.append(f"{language['id']}: runtime status {runtime['status']}")
+
+          if errors:
+              sys.exit("\n".join(errors))
+
+          print(f"validated {len(report['languages'])} languages")
+          PY
+
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: altbench-results
+          path: |
+            results.json
+            RESULTS.md
+          if-no-files-found: warn
+          retention-days: 14

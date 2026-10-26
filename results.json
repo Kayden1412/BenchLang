@@ -1,0 +1,1455 @@
+{
+  "generated_at": "2026-10-26T09:26:39+00:00",
+  "generator": "harness.py",
+  "host": {
+    "platform": "Linux-6.17.0-PRoot-Distro-aarch64-with-glibc2.41",
+    "machine": "aarch64",
+    "python": "3.13.5"
+  },
+  "settings": {
+    "samples": 3,
+    "runtime_samples": 5,
+    "runtime_enabled": true,
+    "timeout_s": 900,
+    "command_overhead_ms": 11.6
+  },
+  "toolchains": {
+    "c++": "clang version 21.1.8",
+    "cargo": "cargo 1.98.0 (797e8a9bc 2026-08-05) (built from a source tarball)",
+    "cc": "clang version 21.1.8",
+    "g++": "clang version 21.1.8",
+    "gcc": "clang version 21.1.8",
+    "make": "GNU Make 4.4.1",
+    "node": "v24.17.0",
+    "python3": "Python 3.13.5",
+    "zig": "0.16.0"
+  },
+  "runtime_config": {
+    "samples": 5,
+    "workloads": [
+      {
+        "id": "single",
+        "args": [
+          "--length",
+          "32",
+          "--count",
+          "1",
+          "--format",
+          "plain"
+        ],
+        "length": 32,
+        "count": 1,
+        "format": "plain",
+        "classes": [
+          "lower",
+          "upper",
+          "digit",
+          "symbol"
+        ],
+        "no_ambiguous": false
+      },
+      {
+        "id": "bulk",
+        "args": [
+          "--length",
+          "32",
+          "--count",
+          "20000",
+          "--format",
+          "plain"
+        ],
+        "length": 32,
+        "count": 20000,
+        "format": "plain",
+        "classes": [
+          "lower",
+          "upper",
+          "digit",
+          "symbol"
+        ],
+        "no_ambiguous": false
+      }
+    ]
+  },
+  "methodology": {
+    "cold": "remove first-party artifacts, then build",
+    "noop": "build again with no source change",
+    "edit": "replace the ALT_RNG_REV marker in the leaf rng file, then build",
+    "clean_scope": "first-party artifacts only; shared toolchain caches are kept",
+    "timing": "external monotonic clock around the build commands",
+    "failures": "recorded as failures; no time is recorded for a failed build",
+    "validation": "property-based checks, because password output is random",
+    "runtime": "external wall clock of complete CLI invocations, output discarded"
+  },
+  "languages": [
+    {
+      "id": "c-cc",
+      "label": "C (cc)",
+      "mode": "file",
+      "directory": "c",
+      "build_commands": [
+        [
+          "make"
+        ]
+      ],
+      "build_env": {},
+      "clean_paths": [
+        "passgen",
+        "passgen.o",
+        "rng.o"
+      ],
+      "binary": "passgen",
+      "run": [
+        "./passgen"
+      ],
+      "requires": [
+        "make",
+        "cc"
+      ],
+      "status": "ok",
+      "phases": {
+        "cold": {
+          "samples_ms": [
+            1609.7,
+            1589.8,
+            1641.8
+          ],
+          "failures": [],
+          "median_ms": 1609.7,
+          "min_ms": 1589.8,
+          "max_ms": 1641.8,
+          "successes": 3,
+          "failures_count": 0
+        },
+        "noop": {
+          "samples_ms": [
+            102.9,
+            96.9,
+            103.7
+          ],
+          "failures": [],
+          "median_ms": 102.9,
+          "min_ms": 96.9,
+          "max_ms": 103.7,
+          "successes": 3,
+          "failures_count": 0
+        },
+        "edit": {
+          "samples_ms": [
+            994.4,
+            1079.3,
+            1179.3
+          ],
+          "failures": [],
+          "median_ms": 1079.3,
+          "min_ms": 994.4,
+          "max_ms": 1179.3,
+          "successes": 3,
+          "failures_count": 0
+        }
+      },
+      "edit": {
+        "file": "rng.c",
+        "marker": "ALT_RNG_REV_0"
+      },
+      "validation": {
+        "ok": true,
+        "checks": [
+          {
+            "name": "default plain",
+            "ok": true,
+            "errors": []
+          },
+          {
+            "name": "json, no ambiguous",
+            "ok": true,
+            "errors": []
+          },
+          {
+            "name": "class subset",
+            "ok": true,
+            "errors": []
+          },
+          {
+            "name": "--help",
+            "ok": true,
+            "errors": []
+          },
+          {
+            "name": "invalid length exits 2",
+            "ok": true,
+            "errors": []
+          },
+          {
+            "name": "two runs differ (CSPRNG)",
+            "ok": true,
+            "errors": []
+          }
+        ],
+        "errors": []
+      },
+      "runtime": {
+        "samples": 5,
+        "status": "ok",
+        "workloads": [
+          {
+            "id": "single",
+            "args": [
+              "--length",
+              "32",
+              "--count",
+              "1",
+              "--format",
+              "plain"
+            ],
+            "count": 1,
+            "length": 32,
+            "samples_ms": [
+              59.6,
+              70.2,
+              63.7,
+              67.7,
+              69.5
+            ],
+            "failures": [],
+            "validation_errors": [],
+            "median_ms": 67.7,
+            "min_ms": 59.6,
+            "max_ms": 70.2,
+            "successes": 5,
+            "failures_count": 0
+          },
+          {
+            "id": "bulk",
+            "args": [
+              "--length",
+              "32",
+              "--count",
+              "20000",
+              "--format",
+              "plain"
+            ],
+            "count": 20000,
+            "length": 32,
+            "samples_ms": [
+              159.2,
+              189.1,
+              176.9,
+              155.5,
+              163.6
+            ],
+            "failures": [],
+            "validation_errors": [],
+            "median_ms": 163.6,
+            "min_ms": 155.5,
+            "max_ms": 189.1,
+            "successes": 5,
+            "failures_count": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "c-gcc",
+      "label": "C (gcc)",
+      "mode": "file",
+      "directory": "c",
+      "build_commands": [
+        [
+          "make"
+        ]
+      ],
+      "build_env": {
+        "CC": "gcc"
+      },
+      "clean_paths": [
+        "passgen",
+        "passgen.o",
+        "rng.o"
+      ],
+      "binary": "passgen",
+      "run": [
+        "./passgen"
+      ],
+      "requires": [
+        "make",
+        "gcc"
+      ],
+      "status": "ok",
+      "phases": {
+        "cold": {
+          "samples_ms": [
+            1515.5,
+            1759.8,
+            1604.7
+          ],
+          "failures": [],
+          "median_ms": 1604.7,
+          "min_ms": 1515.5,
+          "max_ms": 1759.8,
+          "successes": 3,
+          "failures_count": 0
+        },
+        "noop": {
+          "samples_ms": [
+            121.7,
+            102.3,
+            131.5
+          ],
+          "failures": [],
+          "median_ms": 121.7,
+          "min_ms": 102.3,
+          "max_ms": 131.5,
+          "successes": 3,
+          "failures_count": 0
+        },
+        "edit": {
+          "samples_ms": [
+            1061.6,
+            1087.1,
+            1076.6
+          ],
+          "failures": [],
+          "median_ms": 1076.6,
+          "min_ms": 1061.6,
+          "max_ms": 1087.1,
+          "successes": 3,
+          "failures_count": 0
+        }
+      },
+      "edit": {
+        "file": "rng.c",
+        "marker": "ALT_RNG_REV_0"
+      },
+      "validation": {
+        "ok": true,
+        "checks": [
+          {
+            "name": "default plain",
+            "ok": true,
+            "errors": []
+          },
+          {
+            "name": "json, no ambiguous",
+            "ok": true,
+            "errors": []
+          },
+          {
+            "name": "class subset",
+            "ok": true,
+            "errors": []
+          },
+          {
+            "name": "--help",
+            "ok": true,
+            "errors": []
+          },
+          {
+            "name": "invalid length exits 2",
+            "ok": true,
+            "errors": []
+          },
+          {
+            "name": "two runs differ (CSPRNG)",
+            "ok": true,
+            "errors": []
+          }
+        ],
+        "errors": []
+      },
+      "runtime": {
+        "samples": 5,
+        "status": "ok",
+        "workloads": [
+          {
+            "id": "single",
+            "args": [
+              "--length",
+              "32",
+              "--count",
+              "1",
+              "--format",
+              "plain"
+            ],
+            "count": 1,
+            "length": 32,
+            "samples_ms": [
+              49.4,
+              34.0,
+              38.6,
+              54.0,
+              51.1
+            ],
+            "failures": [],
+            "validation_errors": [],
+            "median_ms": 49.4,
+            "min_ms": 34.0,
+            "max_ms": 54.0,
+            "successes": 5,
+            "failures_count": 0
+          },
+          {
+            "id": "bulk",
+            "args": [
+              "--length",
+              "32",
+              "--count",
+              "20000",
+              "--format",
+              "plain"
+            ],
+            "count": 20000,
+            "length": 32,
+            "samples_ms": [
+              173.0,
+              166.9,
+              190.7,
+              149.8,
+              205.6
+            ],
+            "failures": [],
+            "validation_errors": [],
+            "median_ms": 173.0,
+            "min_ms": 149.8,
+            "max_ms": 205.6,
+            "successes": 5,
+            "failures_count": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "cpp-cxx",
+      "label": "C++ (c++)",
+      "mode": "file",
+      "directory": "cpp",
+      "build_commands": [
+        [
+          "make"
+        ]
+      ],
+      "build_env": {},
+      "clean_paths": [
+        "passgen",
+        "passgen.o",
+        "rng.o"
+      ],
+      "binary": "passgen",
+      "run": [
+        "./passgen"
+      ],
+      "requires": [
+        "make",
+        "c++"
+      ],
+      "status": "ok",
+      "phases": {
+        "cold": {
+          "samples_ms": [
+            8116.2,
+            7875.5,
+            7889.3
+          ],
+          "failures": [],
+          "median_ms": 7889.3,
+          "min_ms": 7875.5,
+          "max_ms": 8116.2,
+          "successes": 3,
+          "failures_count": 0
+        },
+        "noop": {
+          "samples_ms": [
+            97.4,
+            96.3,
+            103.7
+          ],
+          "failures": [],
+          "median_ms": 97.4,
+          "min_ms": 96.3,
+          "max_ms": 103.7,
+          "successes": 3,
+          "failures_count": 0
+        },
+        "edit": {
+          "samples_ms": [
+            1514.7,
+            2257.9,
+            1734.6
+          ],
+          "failures": [],
+          "median_ms": 1734.6,
+          "min_ms": 1514.7,
+          "max_ms": 2257.9,
+          "successes": 3,
+          "failures_count": 0
+        }
+      },
+      "edit": {
+        "file": "rng.cpp",
+        "marker": "ALT_RNG_REV_0"
+      },
+      "validation": {
+        "ok": true,
+        "checks": [
+          {
+            "name": "default plain",
+            "ok": true,
+            "errors": []
+          },
+          {
+            "name": "json, no ambiguous",
+            "ok": true,
+            "errors": []
+          },
+          {
+            "name": "class subset",
+            "ok": true,
+            "errors": []
+          },
+          {
+            "name": "--help",
+            "ok": true,
+            "errors": []
+          },
+          {
+            "name": "invalid length exits 2",
+            "ok": true,
+            "errors": []
+          },
+          {
+            "name": "two runs differ (CSPRNG)",
+            "ok": true,
+            "errors": []
+          }
+        ],
+        "errors": []
+      },
+      "runtime": {
+        "samples": 5,
+        "status": "ok",
+        "workloads": [
+          {
+            "id": "single",
+            "args": [
+              "--length",
+              "32",
+              "--count",
+              "1",
+              "--format",
+              "plain"
+            ],
+            "count": 1,
+            "length": 32,
+            "samples_ms": [
+              53.5,
+              53.5,
+              54.6,
+              59.6,
+              52.9
+            ],
+            "failures": [],
+            "validation_errors": [],
+            "median_ms": 53.5,
+            "min_ms": 52.9,
+            "max_ms": 59.6,
+            "successes": 5,
+            "failures_count": 0
+          },
+          {
+            "id": "bulk",
+            "args": [
+              "--length",
+              "32",
+              "--count",
+              "20000",
+              "--format",
+              "plain"
+            ],
+            "count": 20000,
+            "length": 32,
+            "samples_ms": [
+              176.0,
+              212.4,
+              185.4,
+              206.0,
+              207.6
+            ],
+            "failures": [],
+            "validation_errors": [],
+            "median_ms": 206.0,
+            "min_ms": 176.0,
+            "max_ms": 212.4,
+            "successes": 5,
+            "failures_count": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "cpp-gcc",
+      "label": "C++ (g++)",
+      "mode": "file",
+      "directory": "cpp",
+      "build_commands": [
+        [
+          "make"
+        ]
+      ],
+      "build_env": {
+        "CXX": "g++"
+      },
+      "clean_paths": [
+        "passgen",
+        "passgen.o",
+        "rng.o"
+      ],
+      "binary": "passgen",
+      "run": [
+        "./passgen"
+      ],
+      "requires": [
+        "make",
+        "g++"
+      ],
+      "status": "ok",
+      "phases": {
+        "cold": {
+          "samples_ms": [
+            7121.3,
+            7614.4,
+            6997.1
+          ],
+          "failures": [],
+          "median_ms": 7121.3,
+          "min_ms": 6997.1,
+          "max_ms": 7614.4,
+          "successes": 3,
+          "failures_count": 0
+        },
+        "noop": {
+          "samples_ms": [
+            112.7,
+            117.4,
+            90.9
+          ],
+          "failures": [],
+          "median_ms": 112.7,
+          "min_ms": 90.9,
+          "max_ms": 117.4,
+          "successes": 3,
+          "failures_count": 0
+        },
+        "edit": {
+          "samples_ms": [
+            1131.4,
+            1242.9,
+            1791.6
+          ],
+          "failures": [],
+          "median_ms": 1242.9,
+          "min_ms": 1131.4,
+          "max_ms": 1791.6,
+          "successes": 3,
+          "failures_count": 0
+        }
+      },
+      "edit": {
+        "file": "rng.cpp",
+        "marker": "ALT_RNG_REV_0"
+      },
+      "validation": {
+        "ok": true,
+        "checks": [
+          {
+            "name": "default plain",
+            "ok": true,
+            "errors": []
+          },
+          {
+            "name": "json, no ambiguous",
+            "ok": true,
+            "errors": []
+          },
+          {
+            "name": "class subset",
+            "ok": true,
+            "errors": []
+          },
+          {
+            "name": "--help",
+            "ok": true,
+            "errors": []
+          },
+          {
+            "name": "invalid length exits 2",
+            "ok": true,
+            "errors": []
+          },
+          {
+            "name": "two runs differ (CSPRNG)",
+            "ok": true,
+            "errors": []
+          }
+        ],
+        "errors": []
+      },
+      "runtime": {
+        "samples": 5,
+        "status": "ok",
+        "workloads": [
+          {
+            "id": "single",
+            "args": [
+              "--length",
+              "32",
+              "--count",
+              "1",
+              "--format",
+              "plain"
+            ],
+            "count": 1,
+            "length": 32,
+            "samples_ms": [
+              70.1,
+              70.5,
+              45.4,
+              57.8,
+              44.0
+            ],
+            "failures": [],
+            "validation_errors": [],
+            "median_ms": 57.8,
+            "min_ms": 44.0,
+            "max_ms": 70.5,
+            "successes": 5,
+            "failures_count": 0
+          },
+          {
+            "id": "bulk",
+            "args": [
+              "--length",
+              "32",
+              "--count",
+              "20000",
+              "--format",
+              "plain"
+            ],
+            "count": 20000,
+            "length": 32,
+            "samples_ms": [
+              211.2,
+              205.7,
+              231.0,
+              218.5,
+              168.5
+            ],
+            "failures": [],
+            "validation_errors": [],
+            "median_ms": 211.2,
+            "min_ms": 168.5,
+            "max_ms": 231.0,
+            "successes": 5,
+            "failures_count": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "rust",
+      "label": "Rust",
+      "mode": "full",
+      "directory": "rust",
+      "build_commands": [
+        [
+          "cargo",
+          "build",
+          "--release",
+          "--offline"
+        ]
+      ],
+      "build_env": {},
+      "clean_paths": [
+        "target"
+      ],
+      "binary": "target/release/passgen",
+      "run": [
+        "./target/release/passgen"
+      ],
+      "requires": [
+        "cargo"
+      ],
+      "status": "ok",
+      "phases": {
+        "cold": {
+          "samples_ms": [
+            3921.0,
+            3766.0,
+            3786.0
+          ],
+          "failures": [],
+          "median_ms": 3786.0,
+          "min_ms": 3766.0,
+          "max_ms": 3921.0,
+          "successes": 3,
+          "failures_count": 0
+        },
+        "noop": {
+          "samples_ms": [
+            235.9,
+            277.6,
+            201.5
+          ],
+          "failures": [],
+          "median_ms": 235.9,
+          "min_ms": 201.5,
+          "max_ms": 277.6,
+          "successes": 3,
+          "failures_count": 0
+        },
+        "edit": {
+          "samples_ms": [
+            2876.9,
+            2967.9,
+            2959.8
+          ],
+          "failures": [],
+          "median_ms": 2959.8,
+          "min_ms": 2876.9,
+          "max_ms": 2967.9,
+          "successes": 3,
+          "failures_count": 0
+        }
+      },
+      "edit": {
+        "file": "src/rng.rs",
+        "marker": "ALT_RNG_REV_0"
+      },
+      "validation": {
+        "ok": true,
+        "checks": [
+          {
+            "name": "default plain",
+            "ok": true,
+            "errors": []
+          },
+          {
+            "name": "json, no ambiguous",
+            "ok": true,
+            "errors": []
+          },
+          {
+            "name": "class subset",
+            "ok": true,
+            "errors": []
+          },
+          {
+            "name": "--help",
+            "ok": true,
+            "errors": []
+          },
+          {
+            "name": "invalid length exits 2",
+            "ok": true,
+            "errors": []
+          },
+          {
+            "name": "two runs differ (CSPRNG)",
+            "ok": true,
+            "errors": []
+          }
+        ],
+        "errors": []
+      },
+      "runtime": {
+        "samples": 5,
+        "status": "ok",
+        "workloads": [
+          {
+            "id": "single",
+            "args": [
+              "--length",
+              "32",
+              "--count",
+              "1",
+              "--format",
+              "plain"
+            ],
+            "count": 1,
+            "length": 32,
+            "samples_ms": [
+              70.3,
+              57.9,
+              38.0,
+              89.4,
+              39.8
+            ],
+            "failures": [],
+            "validation_errors": [],
+            "median_ms": 57.9,
+            "min_ms": 38.0,
+            "max_ms": 89.4,
+            "successes": 5,
+            "failures_count": 0
+          },
+          {
+            "id": "bulk",
+            "args": [
+              "--length",
+              "32",
+              "--count",
+              "20000",
+              "--format",
+              "plain"
+            ],
+            "count": 20000,
+            "length": 32,
+            "samples_ms": [
+              2175.9,
+              2176.6,
+              2173.3,
+              2178.1,
+              2166.8
+            ],
+            "failures": [],
+            "validation_errors": [],
+            "median_ms": 2175.9,
+            "min_ms": 2166.8,
+            "max_ms": 2178.1,
+            "successes": 5,
+            "failures_count": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "zig",
+      "label": "Zig",
+      "mode": "full",
+      "directory": "zig",
+      "build_commands": [
+        [
+          "zig",
+          "build"
+        ]
+      ],
+      "build_env": {},
+      "clean_paths": [
+        ".zig-cache",
+        "zig-out"
+      ],
+      "binary": "zig-out/bin/passgen",
+      "run": [
+        "./zig-out/bin/passgen"
+      ],
+      "requires": [
+        "zig"
+      ],
+      "status": "ok",
+      "phases": {
+        "cold": {
+          "samples_ms": [
+            97552.7,
+            92249.2,
+            88581.1
+          ],
+          "failures": [],
+          "median_ms": 92249.2,
+          "min_ms": 88581.1,
+          "max_ms": 97552.7,
+          "successes": 3,
+          "failures_count": 0
+        },
+        "noop": {
+          "samples_ms": [
+            1833.1,
+            37868.3,
+            67487.8
+          ],
+          "failures": [],
+          "median_ms": 37868.3,
+          "min_ms": 1833.1,
+          "max_ms": 67487.8,
+          "successes": 3,
+          "failures_count": 0
+        },
+        "edit": {
+          "samples_ms": [
+            59771.6,
+            57940.6,
+            66083.5
+          ],
+          "failures": [],
+          "median_ms": 59771.6,
+          "min_ms": 57940.6,
+          "max_ms": 66083.5,
+          "successes": 3,
+          "failures_count": 0
+        }
+      },
+      "edit": {
+        "file": "src/rng.zig",
+        "marker": "ALT_RNG_REV_0"
+      },
+      "validation": {
+        "ok": true,
+        "checks": [
+          {
+            "name": "default plain",
+            "ok": true,
+            "errors": []
+          },
+          {
+            "name": "json, no ambiguous",
+            "ok": true,
+            "errors": []
+          },
+          {
+            "name": "class subset",
+            "ok": true,
+            "errors": []
+          },
+          {
+            "name": "--help",
+            "ok": true,
+            "errors": []
+          },
+          {
+            "name": "invalid length exits 2",
+            "ok": true,
+            "errors": []
+          },
+          {
+            "name": "two runs differ (CSPRNG)",
+            "ok": true,
+            "errors": []
+          }
+        ],
+        "errors": []
+      },
+      "runtime": {
+        "samples": 5,
+        "status": "ok",
+        "workloads": [
+          {
+            "id": "single",
+            "args": [
+              "--length",
+              "32",
+              "--count",
+              "1",
+              "--format",
+              "plain"
+            ],
+            "count": 1,
+            "length": 32,
+            "samples_ms": [
+              9.4,
+              10.3,
+              7.6,
+              7.7,
+              8.6
+            ],
+            "failures": [],
+            "validation_errors": [],
+            "median_ms": 8.6,
+            "min_ms": 7.6,
+            "max_ms": 10.3,
+            "successes": 5,
+            "failures_count": 0
+          },
+          {
+            "id": "bulk",
+            "args": [
+              "--length",
+              "32",
+              "--count",
+              "20000",
+              "--format",
+              "plain"
+            ],
+            "count": 20000,
+            "length": 32,
+            "samples_ms": [
+              1846.1,
+              1946.9,
+              1945.1,
+              1831.8,
+              1789.3
+            ],
+            "failures": [],
+            "validation_errors": [],
+            "median_ms": 1846.1,
+            "min_ms": 1789.3,
+            "max_ms": 1946.9,
+            "successes": 5,
+            "failures_count": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "go",
+      "label": "Go",
+      "mode": "program",
+      "directory": "go",
+      "build_commands": [
+        [
+          "go",
+          "build",
+          "-o",
+          "passgen",
+          "."
+        ]
+      ],
+      "build_env": {},
+      "clean_paths": [
+        "passgen"
+      ],
+      "binary": "passgen",
+      "run": [
+        "./passgen"
+      ],
+      "requires": [
+        "go"
+      ],
+      "status": "skipped",
+      "phases": {},
+      "missing_requirements": [
+        "go"
+      ]
+    },
+    {
+      "id": "python",
+      "label": "Python",
+      "mode": "interpreted",
+      "directory": "python",
+      "build_commands": [
+        [
+          "python3",
+          "-m",
+          "compileall",
+          "-q",
+          "."
+        ]
+      ],
+      "build_env": {},
+      "clean_paths": [
+        "__pycache__"
+      ],
+      "binary": null,
+      "run": [
+        "python3",
+        "passgen.py"
+      ],
+      "requires": [
+        "python3"
+      ],
+      "status": "ok",
+      "phases": {
+        "cold": {
+          "samples_ms": [
+            416.5,
+            336.5,
+            370.0
+          ],
+          "failures": [],
+          "median_ms": 370.0,
+          "min_ms": 336.5,
+          "max_ms": 416.5,
+          "successes": 3,
+          "failures_count": 0
+        },
+        "noop": {
+          "samples_ms": [
+            348.0,
+            443.1,
+            349.3
+          ],
+          "failures": [],
+          "median_ms": 349.3,
+          "min_ms": 348.0,
+          "max_ms": 443.1,
+          "successes": 3,
+          "failures_count": 0
+        },
+        "edit": {
+          "samples_ms": [
+            399.1,
+            242.1,
+            271.5
+          ],
+          "failures": [],
+          "median_ms": 271.5,
+          "min_ms": 242.1,
+          "max_ms": 399.1,
+          "successes": 3,
+          "failures_count": 0
+        }
+      },
+      "edit": {
+        "file": "rng.py",
+        "marker": "ALT_RNG_REV_0"
+      },
+      "validation": {
+        "ok": true,
+        "checks": [
+          {
+            "name": "default plain",
+            "ok": true,
+            "errors": []
+          },
+          {
+            "name": "json, no ambiguous",
+            "ok": true,
+            "errors": []
+          },
+          {
+            "name": "class subset",
+            "ok": true,
+            "errors": []
+          },
+          {
+            "name": "--help",
+            "ok": true,
+            "errors": []
+          },
+          {
+            "name": "invalid length exits 2",
+            "ok": true,
+            "errors": []
+          },
+          {
+            "name": "two runs differ (CSPRNG)",
+            "ok": true,
+            "errors": []
+          }
+        ],
+        "errors": []
+      },
+      "runtime": {
+        "samples": 5,
+        "status": "ok",
+        "workloads": [
+          {
+            "id": "single",
+            "args": [
+              "--length",
+              "32",
+              "--count",
+              "1",
+              "--format",
+              "plain"
+            ],
+            "count": 1,
+            "length": 32,
+            "samples_ms": [
+              201.6,
+              255.3,
+              211.1,
+              238.0,
+              200.2
+            ],
+            "failures": [],
+            "validation_errors": [],
+            "median_ms": 211.1,
+            "min_ms": 200.2,
+            "max_ms": 255.3,
+            "successes": 5,
+            "failures_count": 0
+          },
+          {
+            "id": "bulk",
+            "args": [
+              "--length",
+              "32",
+              "--count",
+              "20000",
+              "--format",
+              "plain"
+            ],
+            "count": 20000,
+            "length": 32,
+            "samples_ms": [
+              5899.4,
+              5684.8,
+              5749.2,
+              5855.7,
+              5783.9
+            ],
+            "failures": [],
+            "validation_errors": [],
+            "median_ms": 5783.9,
+            "min_ms": 5684.8,
+            "max_ms": 5899.4,
+            "successes": 5,
+            "failures_count": 0
+          }
+        ]
+      }
+    },
+    {
+      "id": "javascript",
+      "label": "JavaScript (Node.js)",
+      "mode": "interpreted",
+      "directory": "javascript",
+      "build_commands": [
+        [
+          "node",
+          "check.js"
+        ]
+      ],
+      "build_env": {},
+      "clean_paths": [],
+      "binary": null,
+      "run": [
+        "node",
+        "passgen.js"
+      ],
+      "requires": [
+        "node"
+      ],
+      "status": "ok",
+      "phases": {
+        "cold": {
+          "samples_ms": [
+            670.7,
+            515.4,
+            552.3
+          ],
+          "failures": [],
+          "median_ms": 552.3,
+          "min_ms": 515.4,
+          "max_ms": 670.7,
+          "successes": 3,
+          "failures_count": 0
+        },
+        "noop": {
+          "samples_ms": [
+            459.9,
+            514.4,
+            674.6
+          ],
+          "failures": [],
+          "median_ms": 514.4,
+          "min_ms": 459.9,
+          "max_ms": 674.6,
+          "successes": 3,
+          "failures_count": 0
+        },
+        "edit": {
+          "samples_ms": [
+            549.1,
+            564.4,
+            611.7
+          ],
+          "failures": [],
+          "median_ms": 564.4,
+          "min_ms": 549.1,
+          "max_ms": 611.7,
+          "successes": 3,
+          "failures_count": 0
+        }
+      },
+      "edit": {
+        "file": "rng.js",
+        "marker": "ALT_RNG_REV_0"
+      },
+      "validation": {
+        "ok": true,
+        "checks": [
+          {
+            "name": "default plain",
+            "ok": true,
+            "errors": []
+          },
+          {
+            "name": "json, no ambiguous",
+            "ok": true,
+            "errors": []
+          },
+          {
+            "name": "class subset",
+            "ok": true,
+            "errors": []
+          },
+          {
+            "name": "--help",
+            "ok": true,
+            "errors": []
+          },
+          {
+            "name": "invalid length exits 2",
+            "ok": true,
+            "errors": []
+          },
+          {
+            "name": "two runs differ (CSPRNG)",
+            "ok": true,
+            "errors": []
+          }
+        ],
+        "errors": []
+      },
+      "runtime": {
+        "samples": 5,
+        "status": "ok",
+        "workloads": [
+          {
+            "id": "single",
+            "args": [
+              "--length",
+              "32",
+              "--count",
+              "1",
+              "--format",
+              "plain"
+            ],
+            "count": 1,
+            "length": 32,
+            "samples_ms": [
+              475.6,
+              765.5,
+              746.5,
+              758.9,
+              704.0
+            ],
+            "failures": [],
+            "validation_errors": [],
+            "median_ms": 746.5,
+            "min_ms": 475.6,
+            "max_ms": 765.5,
+            "successes": 5,
+            "failures_count": 0
+          },
+          {
+            "id": "bulk",
+            "args": [
+              "--length",
+              "32",
+              "--count",
+              "20000",
+              "--format",
+              "plain"
+            ],
+            "count": 20000,
+            "length": 32,
+            "samples_ms": [
+              1529.1,
+              1562.7,
+              1751.4,
+              1423.0,
+              1727.8
+            ],
+            "failures": [],
+            "validation_errors": [],
+            "median_ms": 1562.7,
+            "min_ms": 1423.0,
+            "max_ms": 1751.4,
+            "successes": 5,
+            "failures_count": 0
+          }
+        ]
+      }
+    }
+  ]
+}

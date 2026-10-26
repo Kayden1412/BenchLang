@@ -1,0 +1,147 @@
+{
+  "samples": 3,
+  "runtime": {
+    "samples": 5,
+    "workloads": [
+      {
+        "id": "single",
+        "args": ["--length", "32", "--count", "1", "--format", "plain"],
+        "length": 32,
+        "count": 1,
+        "format": "plain",
+        "classes": ["lower", "upper", "digit", "symbol"],
+        "no_ambiguous": false
+      },
+      {
+        "id": "bulk",
+        "args": ["--length", "32", "--count", "20000", "--format", "plain"],
+        "length": 32,
+        "count": 20000,
+        "format": "plain",
+        "classes": ["lower", "upper", "digit", "symbol"],
+        "no_ambiguous": false
+      }
+    ]
+  },
+  "languages": [
+    {
+      "id": "c-cc",
+      "label": "C (cc)",
+      "mode": "file",
+      "directory": "c",
+      "build": [["make"]],
+      "clean_paths": ["passgen", "passgen.o", "rng.o"],
+      "binary": "passgen",
+      "run": ["./passgen"],
+      "edit_file": "rng.c",
+      "marker": "ALT_RNG_REV_0",
+      "requires": ["make", "cc"]
+    },
+    {
+      "id": "c-gcc",
+      "label": "C (gcc)",
+      "mode": "file",
+      "directory": "c",
+      "build": [["make"]],
+      "build_env": {"CC": "gcc"},
+      "clean_paths": ["passgen", "passgen.o", "rng.o"],
+      "binary": "passgen",
+      "run": ["./passgen"],
+      "edit_file": "rng.c",
+      "marker": "ALT_RNG_REV_0",
+      "requires": ["make", "gcc"]
+    },
+    {
+      "id": "cpp-cxx",
+      "label": "C++ (c++)",
+      "mode": "file",
+      "directory": "cpp",
+      "build": [["make"]],
+      "clean_paths": ["passgen", "passgen.o", "rng.o"],
+      "binary": "passgen",
+      "run": ["./passgen"],
+      "edit_file": "rng.cpp",
+      "marker": "ALT_RNG_REV_0",
+      "requires": ["make", "c++"]
+    },
+    {
+      "id": "cpp-gcc",
+      "label": "C++ (g++)",
+      "mode": "file",
+      "directory": "cpp",
+      "build": [["make"]],
+      "build_env": {"CXX": "g++"},
+      "clean_paths": ["passgen", "passgen.o", "rng.o"],
+      "binary": "passgen",
+      "run": ["./passgen"],
+      "edit_file": "rng.cpp",
+      "marker": "ALT_RNG_REV_0",
+      "requires": ["make", "g++"]
+    },
+    {
+      "id": "rust",
+      "label": "Rust",
+      "mode": "full",
+      "directory": "rust",
+      "build": [["cargo", "build", "--release", "--offline"]],
+      "clean_paths": ["target"],
+      "binary": "target/release/passgen",
+      "run": ["./target/release/passgen"],
+      "edit_file": "src/rng.rs",
+      "marker": "ALT_RNG_REV_0",
+      "requires": ["cargo"]
+    },
+    {
+      "id": "zig",
+      "label": "Zig",
+      "mode": "full",
+      "directory": "zig",
+      "build": [["zig", "build"]],
+      "clean_paths": [".zig-cache", "zig-out"],
+      "binary": "zig-out/bin/passgen",
+      "run": ["./zig-out/bin/passgen"],
+      "edit_file": "src/rng.zig",
+      "marker": "ALT_RNG_REV_0",
+      "requires": ["zig"]
+    },
+    {
+      "id": "go",
+      "label": "Go",
+      "mode": "program",
+      "directory": "go",
+      "build": [["go", "build", "-o", "passgen", "."]],
+      "clean_paths": ["passgen"],
+      "binary": "passgen",
+      "run": ["./passgen"],
+      "edit_file": "rng.go",
+      "marker": "ALT_RNG_REV_0",
+      "requires": ["go"]
+    },
+    {
+      "id": "python",
+      "label": "Python",
+      "mode": "interpreted",
+      "directory": "python",
+      "build": [["python3", "-m", "compileall", "-q", "."]],
+      "clean_paths": ["__pycache__"],
+      "binary": null,
+      "run": ["python3", "passgen.py"],
+      "edit_file": "rng.py",
+      "marker": "ALT_RNG_REV_0",
+      "requires": ["python3"]
+    },
+    {
+      "id": "javascript",
+      "label": "JavaScript (Node.js)",
+      "mode": "interpreted",
+      "directory": "javascript",
+      "build": [["node", "check.js"]],
+      "clean_paths": [],
+      "binary": null,
+      "run": ["node", "passgen.js"],
+      "edit_file": "rng.js",
+      "marker": "ALT_RNG_REV_0",
+      "requires": ["node"]
+    }
+  ]
+}
