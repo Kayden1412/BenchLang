@@ -67,28 +67,86 @@ jobs:
           python3 harness.py --samples 1 --runtime-samples 3
 
       - name: Verify results
+        if: always()
         run: |
           python3 - <<'PY'
           import json
           import sys
           from pathlib import Path
 
-          report = json.loads(Path("results.json").read_text())
+          path = Path("results.json")
+          if not path.is_file():
+              sys.exit("results.json was not produced; see the AltBench step output")
+
+          report = json.loads(path.read_text())
           errors = []
 
+          def dump_failure(label, failure):
+              print(f"\n--- {label} ---", file=sys.stderr)
+              for key in ("command", "kind", "returncode", "message"):
+                  if key in failure:
+                      print(f"{key}: {failure[key]}", file=sys.stderr)
+              if failure.get("stdout_tail"):
+                  print("stdout (tail):", file=sys.stderr)
+                  print(failure["stdout_tail"], file=sys.stderr)
+              if failure.get("stderr_tail"):
+                  print("stderr (tail):", file=sys.stderr)
+                  print(failure["stderr_tail"], file=sys.stderr)
+              for error in failure.get("errors", []):
+                  print(f"validation error: {error}", file=sys.stderr)
+
           for language in report["languages"]:
-              if language["status"] != "ok":
-                  errors.append(f"{language['id']}: build status {language['status']}")
+              lid = language["id"]
+              status = language["status"]
+
+              if status == "skipped":
+                  missing = ", ".join(language.get("missing_requirements", []))
+                  print(f"\n===== {lid}: skipped (missing: {missing}) =====", file=sys.stderr)
+                  errors.append(f"{lid}: build status skipped")
                   continue
 
+              if status != "ok":
+                  errors.append(f"{lid}: build status {status}")
+                  print(f"\n===== {lid}: {status} =====", file=sys.stderr)
+                  if language.get("setup_error"):
+                      print(f"setup_error: {language['setup_error']}", file=sys.stderr)
+                  if language.get("warmup_failure"):
+                      dump_failure("warmup build", language["warmup_failure"])
+                  for phase, data in language.get("phases", {}).items():
+                      for failure in data.get("failures", []):
+                          dump_failure(
+                              f"{phase} sample {failure.get('sample')}", failure
+                          )
+                  for error in (language.get("validation") or {}).get("errors", []):
+                      print(f"validation error: {error}", file=sys.stderr)
+
               runtime = language.get("runtime")
-              if not runtime:
-                  errors.append(f"{language['id']}: runtime missing")
-              elif runtime["status"] != "ok":
-                  errors.append(f"{language['id']}: runtime status {runtime['status']}")
+              if status == "ok":
+                  if not runtime:
+                      errors.append(f"{lid}: runtime missing")
+                  elif runtime["status"] != "ok":
+                      errors.append(f"{lid}: runtime status {runtime['status']}")
+
+              if runtime:
+                  for workload in runtime.get("workloads", []):
+                      for error in workload.get("validation_errors", []):
+                          print(
+                              f"\n--- {lid} runtime {workload['id']} validation ---",
+                              file=sys.stderr,
+                          )
+                          print(error, file=sys.stderr)
+                      for failure in workload.get("failures", []):
+                          dump_failure(
+                              f"{lid} runtime {workload['id']} "
+                              f"sample {failure.get('sample')}",
+                              failure,
+                          )
 
           if errors:
-              sys.exit("\n".join(errors))
+              print("\nFAILURES:", file=sys.stderr)
+              for error in errors:
+                  print(f"  {error}", file=sys.stderr)
+              sys.exit(1)
 
           print(f"validated {len(report['languages'])} languages")
           PY
