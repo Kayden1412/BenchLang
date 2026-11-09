@@ -1,8 +1,6 @@
 package main
 
 import (
-	"bufio"
-	"encoding/json"
 	"fmt"
 	"os"
 	"strconv"
@@ -11,6 +9,9 @@ import (
 
 const maxLength = 1024
 const maxCount = 100000
+const maxPool = 64
+const maxCombined = 256
+const outputSize = 4096
 
 const lower = "abcdefghijklmnopqrstuvwxyz"
 const upper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
@@ -29,6 +30,61 @@ const usage = `usage: passgen [options]
 
 var classNames = [4]string{"lower", "upper", "digit", "symbol"}
 var classSources = [4]string{lower, upper, digit, symbol}
+var newline = [1]byte{'\n'}
+
+type pool struct {
+	chars [maxPool]byte
+	len   int
+}
+
+type output struct {
+	buf [outputSize]byte
+	n   int
+}
+
+func (o *output) flush() {
+	if o.n > 0 {
+		os.Stdout.Write(o.buf[:o.n])
+		o.n = 0
+	}
+}
+
+func (o *output) write(data []byte) {
+	if len(data) >= outputSize {
+		o.flush()
+		os.Stdout.Write(data)
+		return
+	}
+	if o.n+len(data) > outputSize {
+		o.flush()
+	}
+	copy(o.buf[o.n:], data)
+	o.n += len(data)
+}
+
+func (o *output) writeByte(b byte) {
+	if o.n == outputSize {
+		o.flush()
+	}
+	o.buf[o.n] = b
+	o.n++
+}
+
+func (o *output) writeString(s string) {
+	for i := 0; i < len(s); i++ {
+		o.writeByte(s[i])
+	}
+}
+
+func (o *output) writeHex(value uint32) {
+	const digits = "0123456789abcdef"
+	var buf [8]byte
+	for i := 7; i >= 0; i-- {
+		buf[i] = digits[value&0xf]
+		value >>= 4
+	}
+	o.write(buf[:])
+}
 
 func fail(message string) {
 	fmt.Fprintf(os.Stderr, "passgen: %s\n", message)
@@ -43,7 +99,7 @@ func parseInteger(value string, name string) uint64 {
 	return parsed
 }
 
-func isAmbiguous(ch rune) bool {
+func isAmbiguous(ch byte) bool {
 	return ch == 'l' || ch == 'I' || ch == '1' || ch == 'O' || ch == '0'
 }
 
@@ -56,53 +112,72 @@ func classIndex(name string) int {
 	return -1
 }
 
-func buildPools(argument string, noAmbiguous bool) []string {
+func buildPools(argument string, noAmbiguous bool, pools *[4]pool, combined *[maxCombined]byte) (int, int) {
 	var selected [4]bool
 
-	for _, part := range strings.Split(argument, ",") {
-		name := strings.TrimSpace(part)
-		if name == "" {
-			continue
+	start := 0
+	for start <= len(argument) {
+		comma := strings.IndexByte(argument[start:], ',')
+		end := len(argument)
+		if comma >= 0 {
+			end = start + comma
 		}
-		index := classIndex(name)
-		if index < 0 {
-			fail("unknown class: " + name)
+
+		name := strings.TrimSpace(argument[start:end])
+		if name != "" {
+			index := classIndex(name)
+			if index < 0 {
+				fail("unknown character class")
+			}
+			selected[index] = true
 		}
-		selected[index] = true
+
+		if comma < 0 {
+			break
+		}
+		start = end + 1
 	}
 
-	pools := make([]string, 0, len(classNames))
-	for index, name := range classNames {
+	poolCount := 0
+	combinedLen := 0
+
+	for index, source := range classSources {
 		if !selected[index] {
 			continue
 		}
-		var builder strings.Builder
-		for _, ch := range classSources[index] {
+
+		pool := &pools[poolCount]
+		written := 0
+		for i := 0; i < len(source); i++ {
+			ch := source[i]
 			if noAmbiguous && isAmbiguous(ch) {
 				continue
 			}
-			builder.WriteRune(ch)
+			pool.chars[written] = ch
+			written++
 		}
-		chars := builder.String()
-		if chars == "" {
-			fail("class " + name + " is empty after --no-ambiguous")
+		if written == 0 {
+			fail("class is empty after --no-ambiguous")
 		}
-		pools = append(pools, chars)
+		pool.len = written
+
+		copy(combined[combinedLen:], pool.chars[:written])
+		combinedLen += written
+		poolCount++
 	}
 
-	if len(pools) == 0 {
+	if poolCount == 0 {
 		fail("no character classes selected")
 	}
-	return pools
+
+	return poolCount, combinedLen
 }
 
-func generatePassword(length int, pools []string) string {
-	combined := strings.Join(pools, "")
-	out := make([]byte, length)
+func generatePassword(length int, pools []pool, combined []byte, out []byte) {
 	position := 0
 
-	for _, pool := range pools {
-		out[position] = pool[below(uint64(len(pool)))]
+	for i := range pools {
+		out[position] = pools[i].chars[below(uint64(pools[i].len))]
 		position++
 	}
 	for position < length {
@@ -114,11 +189,10 @@ func generatePassword(length int, pools []string) string {
 		j := int(below(uint64(i)))
 		out[i-1], out[j] = out[j], out[i-1]
 	}
-	return string(out)
 }
 
-func fnv1a(hash uint32, text string) uint32 {
-	for _, ch := range []byte(text) {
+func fnv1a(hash uint32, data []byte) uint32 {
+	for _, ch := range data {
 		hash ^= uint32(ch)
 		hash *= 16777619
 	}
@@ -137,7 +211,7 @@ func main() {
 		arg := args[i]
 
 		if arg == "--help" || arg == "-h" {
-			fmt.Print(usage)
+			os.Stdout.WriteString(usage)
 			return
 		}
 
@@ -181,46 +255,51 @@ func main() {
 			continue
 		}
 
-		fail("unknown argument: " + arg)
+		fail("unknown argument")
 	}
 
-	pools := buildPools(classes, noAmbiguous)
-	if length < len(pools) {
+	var pools [4]pool
+	var combined [maxCombined]byte
+	poolCount, combinedLen := buildPools(classes, noAmbiguous, &pools, &combined)
+	if length < poolCount {
 		fail("--length is smaller than the number of selected classes")
 	}
 
-	passwords := make([]string, 0, count)
+	var password [maxLength]byte
 	var checksum uint32 = 2166136261
-	for i := 0; i < count; i++ {
-		password := generatePassword(length, pools)
-		passwords = append(passwords, password)
-		checksum = fnv1a(checksum, password)
-		checksum = fnv1a(checksum, "\n")
-	}
-
-	writer := bufio.NewWriter(os.Stdout)
-	defer writer.Flush()
+	var out output
 
 	if asJSON {
-		payload := struct {
-			Passwords []string `json:"passwords"`
-			Checksum  string   `json:"checksum"`
-		}{
-			Passwords: passwords,
-			Checksum:  fmt.Sprintf("%08x", checksum),
-		}
-		encoded, err := json.Marshal(payload)
-		if err != nil {
-			fail("JSON encoding failed")
-		}
-		writer.Write(encoded)
-		writer.WriteByte('\n')
-		return
+		out.writeString("{\"passwords\":[")
 	}
 
-	for _, password := range passwords {
-		writer.WriteString(password)
-		writer.WriteByte('\n')
+	for index := 0; index < count; index++ {
+		generatePassword(length, pools[:poolCount], combined[:combinedLen], password[:length])
+		checksum = fnv1a(checksum, password[:length])
+		checksum = fnv1a(checksum, newline[:])
+
+		if asJSON {
+			if index > 0 {
+				out.writeByte(',')
+			}
+			out.writeByte('"')
+			out.write(password[:length])
+			out.writeByte('"')
+		} else {
+			out.write(password[:length])
+			out.writeByte('\n')
+		}
 	}
-	fmt.Fprintf(writer, "checksum=%08x\n", checksum)
+
+	if asJSON {
+		out.writeString("],\"checksum\":\"")
+		out.writeHex(checksum)
+		out.writeString("\"}\n")
+	} else {
+		out.writeString("checksum=")
+		out.writeHex(checksum)
+		out.writeByte('\n')
+	}
+
+	out.flush()
 }

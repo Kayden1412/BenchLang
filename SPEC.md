@@ -51,7 +51,7 @@ CSPRNG, then consumes little-endian 32-bit words from that buffer:
 
 | Language | Buffer source |
 |---|---|
-| C / C++ | `getrandom(2)` on Linux, `arc4random_buf` on Android, `/dev/urandom` fallback |
+| C / C++ | `getrandom(2)` on Linux, `arc4random_buf` on Android |
 | Rust | `/dev/urandom` via `std::fs::File` (no external crates) |
 | Go | `crypto/rand` |
 | Zig | `Io.randomSecure` (the OS CSPRNG behind Zig's `Io` interface) |
@@ -65,6 +65,14 @@ all languages consume the CSPRNG in the same pattern; only the OS call that
 fills the buffer differs. This keeps runtime comparisons about language and
 runtime overhead rather than about how often each one happens to call the
 kernel.
+
+Generation uses the same fixed-buffer strategy as the reference Zig program:
+each class pool is at most 64 bytes, the combined pool is at most 256 bytes,
+and the password buffer is 1024 bytes. Pools and the combined pool are built
+once, each password is generated in place, and output is streamed through a
+4096-byte buffer. Native implementations perform no per-password heap
+allocation; interpreted implementations reuse fixed buffers as far as their
+runtime allows.
 
 Uniform selection uses rejection sampling over the 32-bit word with
 `limit = (2^32 / n) * n`, so there is no modulo bias. Fisher-Yates is used for

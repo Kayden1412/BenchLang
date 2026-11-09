@@ -2,24 +2,25 @@
 
 #include <cerrno>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <iomanip>
-#include <iostream>
-#include <string>
-#include <utility>
-#include <vector>
 
 namespace {
 
+constexpr std::size_t kMaxPool = 64;
+constexpr std::size_t kMaxCombined = 256;
+constexpr std::size_t kMaxClasses = 4;
 constexpr std::size_t kMaxLength = 1024;
 constexpr std::size_t kMaxCount = 100000;
-constexpr char kAmbiguous[] = "lI1O0";
 
 const char *kLower = "abcdefghijklmnopqrstuvwxyz";
 const char *kUpper = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 const char *kDigit = "0123456789";
 const char *kSymbol = "!@#$%^&*()-_=+[]{};:,.?/";
+
+const char *kClassNames[kMaxClasses] = {"lower", "upper", "digit", "symbol"};
+const char *kClassSources[kMaxClasses] = {kLower, kUpper, kDigit, kSymbol};
 
 const char *kUsage =
     "usage: passgen [options]\n"
@@ -32,24 +33,24 @@ const char *kUsage =
     "  --help              print this help\n";
 
 struct Pool {
-  std::string name;
-  std::string chars;
+  char chars[kMaxPool];
+  std::size_t len;
 };
 
-[[noreturn]] void fail(const std::string &message) {
-  std::cerr << "passgen: " << message << '\n';
+[[noreturn]] void fail(const char *message) {
+  std::fprintf(stderr, "passgen: %s\n", message);
   std::exit(2);
 }
 
-bool parse_u32(const std::string &text, std::uint32_t &out) {
-  if (text.empty() || text[0] == '-') {
+bool parse_u32(const char *text, std::uint32_t &out) {
+  if (text == nullptr || *text == '\0' || *text == '-') {
     return false;
   }
 
   char *end = nullptr;
   errno = 0;
-  unsigned long value = std::strtoul(text.c_str(), &end, 10);
-  if (errno != 0 || end == text.c_str() || *end != '\0' ||
+  unsigned long value = std::strtoul(text, &end, 10);
+  if (errno != 0 || end == text || *end != '\0' ||
       value > 0xFFFFFFFFul) {
     return false;
   }
@@ -59,126 +60,120 @@ bool parse_u32(const std::string &text, std::uint32_t &out) {
 }
 
 bool is_ambiguous(char c) {
-  return std::strchr(kAmbiguous, c) != nullptr;
+  return c == 'l' || c == 'I' || c == '1' || c == 'O' || c == '0';
 }
 
-const char *class_source(const std::string &name) {
-  if (name == "lower") {
-    return kLower;
+int class_index(const char *name, std::size_t len) {
+  for (std::size_t i = 0; i < kMaxClasses; i++) {
+    if (std::strlen(kClassNames[i]) == len &&
+        std::strncmp(kClassNames[i], name, len) == 0) {
+      return static_cast<int>(i);
+    }
   }
-  if (name == "upper") {
-    return kUpper;
-  }
-  if (name == "digit") {
-    return kDigit;
-  }
-  if (name == "symbol") {
-    return kSymbol;
-  }
-  return nullptr;
+  return -1;
 }
 
-std::vector<Pool> build_pools(const std::string &argument, bool no_ambiguous) {
-  bool selected[4] = {false, false, false, false};
-  std::size_t start = 0;
+void build_pools(const char *argument, bool no_ambiguous, Pool *pools,
+                 std::size_t &pool_count, char *combined,
+                 std::size_t &combined_len) {
+  bool selected[kMaxClasses] = {false, false, false, false};
+  const char *cursor = argument;
 
-  while (start <= argument.size()) {
-    std::size_t comma = argument.find(',', start);
-    std::size_t end = (comma == std::string::npos) ? argument.size() : comma;
-    std::size_t first = start;
-    std::size_t last = end;
+  if (argument == nullptr || *argument == '\0') {
+    fail("no character classes selected");
+  }
 
-    while (first < last && (argument[first] == ' ' || argument[first] == '\t')) {
-      first++;
+  for (;;) {
+    const char *comma = std::strchr(cursor, ',');
+    const char *end =
+        (comma == nullptr) ? cursor + std::strlen(cursor) : comma;
+    const char *start = cursor;
+
+    while (start < end && (*start == ' ' || *start == '\t')) {
+      start++;
     }
-    while (last > first &&
-           (argument[last - 1] == ' ' || argument[last - 1] == '\t')) {
-      last--;
+    while (end > start && (end[-1] == ' ' || end[-1] == '\t')) {
+      end--;
     }
 
-    std::string name = argument.substr(first, last - first);
-    if (name.empty()) {
-      if (comma == std::string::npos) {
-        break;
+    std::size_t len = static_cast<std::size_t>(end - start);
+    if (len > 0) {
+      int index = class_index(start, len);
+      if (index < 0) {
+        fail("unknown character class");
       }
-      start = comma + 1;
-      continue;
+      selected[index] = true;
     }
 
-    int index = -1;
-    if (name == "lower") {
-      index = 0;
-    } else if (name == "upper") {
-      index = 1;
-    } else if (name == "digit") {
-      index = 2;
-    } else if (name == "symbol") {
-      index = 3;
-    }
-
-    if (index < 0) {
-      fail("invalid character class list");
-    }
-    selected[index] = true;
-
-    if (comma == std::string::npos) {
+    if (comma == nullptr) {
       break;
     }
-    start = comma + 1;
+    cursor = comma + 1;
   }
 
-  std::vector<Pool> pools;
-  for (int i = 0; i < 4; i++) {
+  pool_count = 0;
+  combined_len = 0;
+
+  for (std::size_t i = 0; i < kMaxClasses; i++) {
     if (!selected[i]) {
       continue;
     }
 
-    const char *name = (i == 0) ? "lower" : (i == 1) ? "upper" : (i == 2) ? "digit" : "symbol";
-    const char *source = class_source(name);
-    std::string chars;
-    for (const char *cursor = source; *cursor != '\0'; cursor++) {
-      if (no_ambiguous && is_ambiguous(*cursor)) {
+    const char *source = kClassSources[i];
+    Pool &pool = pools[pool_count];
+    std::size_t written = 0;
+
+    for (const char *c = source; *c != '\0'; c++) {
+      if (no_ambiguous && is_ambiguous(*c)) {
         continue;
       }
-      chars.push_back(*cursor);
+      if (written >= kMaxPool) {
+        fail("character class list is too long");
+      }
+      pool.chars[written++] = *c;
     }
-    if (chars.empty()) {
+    if (written == 0) {
       fail("class is empty after --no-ambiguous");
     }
-    pools.push_back({name, chars});
+    pool.len = written;
+
+    if (combined_len + written > kMaxCombined) {
+      fail("character class list is too long");
+    }
+    std::memcpy(combined + combined_len, pool.chars, written);
+    combined_len += written;
+    pool_count++;
   }
 
-  if (pools.empty()) {
+  if (pool_count == 0) {
     fail("no character classes selected");
   }
-  return pools;
 }
 
-std::string generate_password(std::size_t length, const std::vector<Pool> &pools) {
-  std::string combined;
-  for (const Pool &pool : pools) {
-    combined += pool.chars;
-  }
+void generate_password(std::size_t length, const Pool *pools,
+                       std::size_t pool_count, const char *combined,
+                       std::size_t combined_len, char *out) {
+  std::size_t position = 0;
 
-  std::string out;
-  out.reserve(length);
-  for (const Pool &pool : pools) {
-    out.push_back(pool.chars[rng_below(pool.chars.size())]);
+  for (std::size_t i = 0; i < pool_count; i++) {
+    out[position++] = pools[i].chars[rng_below(pools[i].len)];
   }
-  while (out.size() < length) {
-    out.push_back(combined[rng_below(combined.size())]);
+  while (position < length) {
+    out[position++] = combined[rng_below(combined_len)];
   }
 
   for (std::size_t i = length; i > 1; i--) {
     std::size_t j = rng_below(i);
-    std::swap(out[i - 1], out[j]);
+    char tmp = out[i - 1];
+    out[i - 1] = out[j];
+    out[j] = tmp;
   }
-  return out;
+  out[length] = '\0';
 }
 
-std::uint32_t fnv1a(std::uint32_t hash, const std::string &text) {
-  for (unsigned char byte : text) {
-    hash ^= byte;
+std::uint32_t fnv1a(std::uint32_t hash, const char *data, std::size_t len) {
+  for (std::size_t i = 0; i < len; i++) {
+    hash ^= static_cast<unsigned char>(data[i]);
     hash *= 16777619u;
   }
   return hash;
@@ -187,43 +182,48 @@ std::uint32_t fnv1a(std::uint32_t hash, const std::string &text) {
 } // namespace
 
 int main(int argc, char **argv) {
+  static char output_buffer[4096];
+  std::setvbuf(stdout, output_buffer, _IOFBF, sizeof output_buffer);
+
   std::size_t length = 16;
   std::size_t count = 5;
-  std::string classes = "lower,upper,digit,symbol";
+  const char *classes = "lower,upper,digit,symbol";
   bool no_ambiguous = false;
   bool as_json = false;
 
   for (int i = 1; i < argc; i++) {
-    std::string arg = argv[i];
+    const char *arg = argv[i];
 
-    if (arg == "--help" || arg == "-h") {
-      std::cout << kUsage;
+    if (std::strcmp(arg, "--help") == 0 || std::strcmp(arg, "-h") == 0) {
+      std::fputs(kUsage, stdout);
       return 0;
     }
 
-    if (arg == "--no-ambiguous") {
+    if (std::strcmp(arg, "--no-ambiguous") == 0) {
       no_ambiguous = true;
       continue;
     }
 
-    if (arg == "--length" || arg == "--count" || arg == "--classes" ||
-        arg == "--format") {
+    if (std::strcmp(arg, "--length") == 0 ||
+        std::strcmp(arg, "--count") == 0 ||
+        std::strcmp(arg, "--classes") == 0 ||
+        std::strcmp(arg, "--format") == 0) {
       if (i + 1 >= argc) {
         fail("option needs a value");
       }
-      std::string value = argv[++i];
+      const char *value = argv[++i];
 
-      if (arg == "--classes") {
+      if (std::strcmp(arg, "--classes") == 0) {
         classes = value;
-      } else if (arg == "--format") {
-        if (value == "json") {
+      } else if (std::strcmp(arg, "--format") == 0) {
+        if (std::strcmp(value, "json") == 0) {
           as_json = true;
-        } else if (value == "plain") {
+        } else if (std::strcmp(value, "plain") == 0) {
           as_json = false;
         } else {
           fail("--format must be plain or json");
         }
-      } else if (arg == "--length") {
+      } else if (std::strcmp(arg, "--length") == 0) {
         std::uint32_t parsed = 0;
         if (!parse_u32(value, parsed) || parsed < 1 || parsed > kMaxLength) {
           fail("--length must be between 1 and 1024");
@@ -242,40 +242,43 @@ int main(int argc, char **argv) {
     fail("unknown argument");
   }
 
-  std::vector<Pool> pools = build_pools(classes, no_ambiguous);
-  if (length < pools.size()) {
+  Pool pools[kMaxClasses];
+  char combined[kMaxCombined];
+  std::size_t pool_count = 0;
+  std::size_t combined_len = 0;
+  build_pools(classes, no_ambiguous, pools, pool_count, combined,
+              combined_len);
+  if (length < pool_count) {
     fail("--length is smaller than the number of selected classes");
   }
 
+  char password[kMaxLength + 1];
   std::uint32_t checksum = 2166136261u;
-  std::vector<std::string> passwords;
-  passwords.reserve(count);
 
   if (as_json) {
-    std::cout << "{\"passwords\":[";
+    std::fputs("{\"passwords\":[", stdout);
   }
 
   for (std::size_t i = 0; i < count; i++) {
-    std::string password = generate_password(length, pools);
-    checksum = fnv1a(checksum, password);
-    checksum = fnv1a(checksum, "\n");
+    generate_password(length, pools, pool_count, combined, combined_len,
+                      password);
+    checksum = fnv1a(checksum, password, length);
+    checksum = fnv1a(checksum, "\n", 1);
 
     if (as_json) {
       if (i > 0) {
-        std::cout << ',';
+        std::fputc(',', stdout);
       }
-      std::cout << '"' << password << '"';
+      std::printf("\"%s\"", password);
     } else {
-      std::cout << password << '\n';
+      std::printf("%s\n", password);
     }
   }
 
   if (as_json) {
-    std::cout << "],\"checksum\":\"" << std::hex << std::setw(8)
-              << std::setfill('0') << checksum << "\"}\n";
+    std::printf("],\"checksum\":\"%08x\"}\n", checksum);
   } else {
-    std::cout << "checksum=" << std::hex << std::setw(8)
-              << std::setfill('0') << checksum << '\n';
+    std::printf("checksum=%08x\n", checksum);
   }
 
   return 0;

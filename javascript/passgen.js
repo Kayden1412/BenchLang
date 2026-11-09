@@ -5,6 +5,7 @@ const { below } = require('./rng.js');
 
 const MAX_LENGTH = 1024;
 const MAX_COUNT = 100000;
+const OUTPUT_SIZE = 4096;
 
 const LOWER = 'abcdefghijklmnopqrstuvwxyz';
 const UPPER = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -12,6 +13,7 @@ const DIGIT = '0123456789';
 const SYMBOL = '!@#$%^&*()-_=+[]{};:,.?/';
 const CLASS_ORDER = ['lower', 'upper', 'digit', 'symbol'];
 const SOURCES = { lower: LOWER, upper: UPPER, digit: DIGIT, symbol: SYMBOL };
+const NEWLINE = Buffer.from('\n');
 
 const USAGE = `usage: passgen [options]
 
@@ -22,6 +24,57 @@ const USAGE = `usage: passgen [options]
   --format FORMAT     plain (default) or json
   --help              print this help
 `;
+
+class Output {
+  constructor() {
+    this.buf = Buffer.allocUnsafe(OUTPUT_SIZE);
+    this.n = 0;
+  }
+
+  flush() {
+    if (this.n > 0) {
+      process.stdout.write(this.buf.subarray(0, this.n));
+      this.n = 0;
+    }
+  }
+
+  writeBuffer(buffer, start, end) {
+    const size = end - start;
+    if (size >= OUTPUT_SIZE) {
+      this.flush();
+      process.stdout.write(buffer.subarray(start, end));
+      return;
+    }
+    if (this.n + size > OUTPUT_SIZE) {
+      this.flush();
+    }
+    buffer.copy(this.buf, this.n, start, end);
+    this.n += size;
+  }
+
+  writeByte(byte) {
+    if (this.n === OUTPUT_SIZE) {
+      this.flush();
+    }
+    this.buf[this.n++] = byte;
+  }
+
+  writeString(text) {
+    for (let i = 0; i < text.length; i++) {
+      this.writeByte(text.charCodeAt(i));
+    }
+  }
+
+  writeHex(value) {
+    const digits = '0123456789abcdef';
+    const tmp = Buffer.allocUnsafe(8);
+    for (let i = 7; i >= 0; i--) {
+      tmp[i] = digits.charCodeAt(value & 0xf);
+      value >>>= 4;
+    }
+    this.writeBuffer(tmp, 0, 8);
+  }
+}
 
 function fail(message) {
   process.stderr.write(`passgen: ${message}\n`);
@@ -77,25 +130,27 @@ function buildPools(argument, noAmbiguous) {
   return pools;
 }
 
-function generatePassword(length, pools) {
-  const combined = pools.join('');
-  const chars = pools.map((pool) => pool[below(pool.length)]);
-  while (chars.length < length) {
-    chars.push(combined[below(combined.length)]);
+function generatePassword(length, pools, combined, out) {
+  let position = 0;
+  for (const pool of pools) {
+    out[position++] = pool.charCodeAt(below(pool.length));
   }
+  while (position < length) {
+    out[position++] = combined.charCodeAt(below(combined.length));
+  }
+
   for (let i = length - 1; i > 0; i--) {
     const j = below(i + 1);
-    const tmp = chars[i];
-    chars[i] = chars[j];
-    chars[j] = tmp;
+    const tmp = out[i];
+    out[i] = out[j];
+    out[j] = tmp;
   }
-  return chars.join('');
 }
 
-function fnv1a(hash, text) {
+function fnv1a(hash, data, length) {
   let h = hash;
-  for (const byte of Buffer.from(text, 'utf8')) {
-    h ^= byte;
+  for (let i = 0; i < length; i++) {
+    h ^= data[i];
     h = Math.imul(h, 16777619) >>> 0;
   }
   return h;
@@ -159,25 +214,44 @@ function main(argv) {
     fail('--length is smaller than the number of selected classes');
   }
 
+  const combined = pools.join('');
+  const password = Buffer.allocUnsafe(MAX_LENGTH);
+  const out = new Output();
   let checksum = 2166136261;
-  const passwords = [];
-
-  for (let i = 0; i < count; i++) {
-    const password = generatePassword(length, pools);
-    passwords.push(password);
-    checksum = fnv1a(checksum, password);
-    checksum = fnv1a(checksum, '\n');
-  }
-
-  const hex = checksum.toString(16).padStart(8, '0');
 
   if (asJson) {
-    process.stdout.write(
-      `${JSON.stringify({ passwords, checksum: hex })}\n`,
-    );
-  } else {
-    process.stdout.write(`${passwords.join('\n')}\nchecksum=${hex}\n`);
+    out.writeString('{"passwords":[');
   }
+
+  for (let index = 0; index < count; index++) {
+    generatePassword(length, pools, combined, password);
+    checksum = fnv1a(checksum, password, length);
+    checksum = fnv1a(checksum, NEWLINE, 1);
+
+    if (asJson) {
+      if (index > 0) {
+        out.writeByte(44);
+      }
+      out.writeByte(34);
+      out.writeBuffer(password, 0, length);
+      out.writeByte(34);
+    } else {
+      out.writeBuffer(password, 0, length);
+      out.writeByte(10);
+    }
+  }
+
+  if (asJson) {
+    out.writeString('],"checksum":"');
+    out.writeHex(checksum);
+    out.writeString('"}\n');
+  } else {
+    out.writeString('checksum=');
+    out.writeHex(checksum);
+    out.writeByte(10);
+  }
+
+  out.flush();
   return 0;
 }
 

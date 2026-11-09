@@ -9,6 +9,9 @@ package main
 // buffer and consume little-endian 32-bit words. This keeps the random-value
 // consumption pattern identical across languages; only the OS call used to
 // fill the buffer differs.
+//
+// The buffer and offset are fixed-size globals, matching Zig: no allocation,
+// refill only when fewer than four bytes remain.
 
 import (
 	"crypto/rand"

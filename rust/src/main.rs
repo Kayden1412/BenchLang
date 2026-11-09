@@ -4,12 +4,15 @@ use rng::Random;
 
 const MAX_LENGTH: usize = 1024;
 const MAX_COUNT: usize = 100000;
+const MAX_POOL: usize = 64;
+const MAX_COMBINED: usize = 256;
 
 const LOWER: &str = "abcdefghijklmnopqrstuvwxyz";
 const UPPER: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 const DIGIT: &str = "0123456789";
 const SYMBOL: &str = "!@#$%^&*()-_=+[]{};:,.?/";
-const CLASS_ORDER: [&str; 4] = ["lower", "upper", "digit", "symbol"];
+const CLASS_NAMES: [&str; 4] = ["lower", "upper", "digit", "symbol"];
+const CLASS_SOURCES: [&str; 4] = [LOWER, UPPER, DIGIT, SYMBOL];
 
 const USAGE: &str = "usage: passgen [options]
 
@@ -21,26 +24,32 @@ const USAGE: &str = "usage: passgen [options]
   --help              print this help
 ";
 
+#[derive(Clone, Copy)]
+struct Pool {
+    chars: [u8; MAX_POOL],
+    len: usize,
+}
+
+const EMPTY_POOL: Pool = Pool {
+    chars: [0u8; MAX_POOL],
+    len: 0,
+};
+
 fn fail(message: &str) -> ! {
     eprintln!("passgen: {message}");
     std::process::exit(2);
 }
 
-fn class_source(name: &str) -> Option<&'static str> {
-    match name {
-        "lower" => Some(LOWER),
-        "upper" => Some(UPPER),
-        "digit" => Some(DIGIT),
-        "symbol" => Some(SYMBOL),
-        _ => None,
-    }
+fn is_ambiguous(c: u8) -> bool {
+    matches!(c, b'l' | b'I' | b'1' | b'O' | b'0')
 }
 
-fn is_ambiguous(c: char) -> bool {
-    matches!(c, 'l' | 'I' | '1' | 'O' | '0')
-}
-
-fn build_pools(argument: &str, no_ambiguous: bool) -> Vec<String> {
+fn build_pools(
+    argument: &str,
+    no_ambiguous: bool,
+    pools: &mut [Pool; 4],
+    combined: &mut [u8; MAX_COMBINED],
+) -> (usize, usize) {
     let mut selected = [false; 4];
 
     for part in argument.split(',') {
@@ -48,77 +57,160 @@ fn build_pools(argument: &str, no_ambiguous: bool) -> Vec<String> {
         if name.is_empty() {
             continue;
         }
-        let index = CLASS_ORDER
+        let index = CLASS_NAMES
             .iter()
             .position(|candidate| *candidate == name)
-            .unwrap_or_else(|| fail(&format!("unknown class: {name}")));
+            .unwrap_or_else(|| fail("unknown character class"));
         selected[index] = true;
     }
 
-    let mut pools = Vec::new();
-    for (index, name) in CLASS_ORDER.iter().enumerate() {
+    let mut pool_count = 0;
+    let mut combined_len = 0;
+
+    for (index, source) in CLASS_SOURCES.iter().enumerate() {
         if !selected[index] {
             continue;
         }
-        let source = class_source(name).unwrap();
-        let chars: String = source
-            .chars()
-            .filter(|c| !no_ambiguous || !is_ambiguous(*c))
-            .collect();
-        if chars.is_empty() {
-            fail(&format!("class {name} is empty after --no-ambiguous"));
+
+        let mut written = 0;
+        for &c in source.as_bytes() {
+            if no_ambiguous && is_ambiguous(c) {
+                continue;
+            }
+            pools[pool_count].chars[written] = c;
+            written += 1;
         }
-        pools.push(chars);
+        if written == 0 {
+            fail("class is empty after --no-ambiguous");
+        }
+        pools[pool_count].len = written;
+
+        combined[combined_len..combined_len + written]
+            .copy_from_slice(&pools[pool_count].chars[..written]);
+        combined_len += written;
+        pool_count += 1;
     }
 
-    if pools.is_empty() {
+    if pool_count == 0 {
         fail("no character classes selected");
     }
-    pools
+
+    (pool_count, combined_len)
 }
 
-fn generate_password(length: usize, pools: &[String], random: &mut Random) -> String {
-    let combined: String = pools.concat();
-    let mut chars: Vec<char> = pools
-        .iter()
-        .map(|pool| {
-            let bytes = pool.as_bytes();
-            bytes[random.below(bytes.len())] as char
-        })
-        .collect();
-
-    while chars.len() < length {
-        let bytes = combined.as_bytes();
-        chars.push(bytes[random.below(bytes.len())] as char);
+fn generate_password(
+    length: usize,
+    pools: &[Pool],
+    combined: &[u8],
+    random: &mut Random,
+    out: &mut [u8],
+) {
+    let mut position = 0;
+    for pool in pools {
+        out[position] = pool.chars[random.below(pool.len)];
+        position += 1;
+    }
+    while position < length {
+        out[position] = combined[random.below(combined.len())];
+        position += 1;
     }
 
     for i in (1..length).rev() {
         let j = random.below(i + 1);
-        chars.swap(i, j);
+        out.swap(i, j);
     }
-
-    chars.into_iter().collect()
 }
 
-fn fnv1a(mut hash: u32, text: &str) -> u32 {
-    for byte in text.as_bytes() {
-        hash ^= *byte as u32;
+fn fnv1a(mut hash: u32, data: &[u8]) -> u32 {
+    for &byte in data {
+        hash ^= byte as u32;
         hash = hash.wrapping_mul(16777619);
     }
     hash
 }
 
+struct Writer {
+    buffer: [u8; 4096],
+    len: usize,
+}
+
+impl Writer {
+    fn new() -> Self {
+        Self {
+            buffer: [0u8; 4096],
+            len: 0,
+        }
+    }
+
+    fn flush(&mut self) {
+        if self.len > 0 {
+            use std::io::Write;
+            std::io::stdout()
+                .write_all(&self.buffer[..self.len])
+                .expect("failed to write stdout");
+            self.len = 0;
+        }
+    }
+
+    fn write_all(&mut self, data: &[u8]) {
+        if data.len() >= self.buffer.len() {
+            self.flush();
+            use std::io::Write;
+            std::io::stdout()
+                .write_all(data)
+                .expect("failed to write stdout");
+            return;
+        }
+
+        if self.len + data.len() > self.buffer.len() {
+            self.flush();
+        }
+
+        self.buffer[self.len..self.len + data.len()].copy_from_slice(data);
+        self.len += data.len();
+    }
+
+    fn write_byte(&mut self, byte: u8) {
+        if self.len == self.buffer.len() {
+            self.flush();
+        }
+        self.buffer[self.len] = byte;
+        self.len += 1;
+    }
+
+    fn write_str(&mut self, text: &str) {
+        self.write_all(text.as_bytes());
+    }
+}
+
+impl Drop for Writer {
+    fn drop(&mut self) {
+        self.flush();
+    }
+}
+
+fn write_checksum(writer: &mut Writer, value: u32) {
+    const DIGITS: &[u8; 16] = b"0123456789abcdef";
+    let mut buffer = [0u8; 8];
+    let mut v = value;
+
+    for i in (0..buffer.len()).rev() {
+        buffer[i] = DIGITS[(v & 0xf) as usize];
+        v >>= 4;
+    }
+    writer.write_all(&buffer);
+}
+
 fn main() {
-    let args: Vec<String> = std::env::args().skip(1).collect();
     let mut length = 16usize;
     let mut count = 5usize;
     let mut classes = String::from("lower,upper,digit,symbol");
     let mut no_ambiguous = false;
     let mut as_json = false;
 
-    let mut i = 0;
-    while i < args.len() {
-        let arg = args[i].as_str();
+    let mut args = std::env::args().skip(1);
+    while let Some(arg) = args.next() {
+        let arg = arg.as_str();
 
         if arg == "--help" || arg == "-h" {
             print!("{USAGE}");
@@ -127,20 +219,15 @@ fn main() {
 
         if arg == "--no-ambiguous" {
             no_ambiguous = true;
-            i += 1;
             continue;
         }
 
         if arg == "--length" || arg == "--count" || arg == "--classes" || arg == "--format" {
-            if i + 1 >= args.len() {
-                fail("option needs a value");
-            }
-            let value = args[i + 1].as_str();
-            i += 2;
+            let value = args.next().unwrap_or_else(|| fail("option needs a value"));
 
             match arg {
-                "--classes" => classes = value.to_string(),
-                "--format" => match value {
+                "--classes" => classes = value,
+                "--format" => match value.as_str() {
                     "json" => as_json = true,
                     "plain" => as_json = false,
                     _ => fail("--format must be plain or json"),
@@ -165,41 +252,59 @@ fn main() {
             continue;
         }
 
-        fail(&format!("unknown argument: {arg}"));
+        fail("unknown argument");
     }
 
-    let pools = build_pools(&classes, no_ambiguous);
-    if length < pools.len() {
+    let mut pools = [EMPTY_POOL; 4];
+    let mut combined = [0u8; MAX_COMBINED];
+    let (pool_count, combined_len) =
+        build_pools(&classes, no_ambiguous, &mut pools, &mut combined);
+    if length < pool_count {
         fail("--length is smaller than the number of selected classes");
     }
 
-    let mut random =
-        Random::new().unwrap_or_else(|error| fail(&format!("CSPRNG: {error}")));
-
+    let mut random = Random::new().unwrap_or_else(|_| fail("CSPRNG failure"));
+    let mut password = [0u8; MAX_LENGTH];
     let mut checksum = 2166136261u32;
+    let mut writer = Writer::new();
 
     if as_json {
-        print!("{{\"passwords\":[");
+        writer.write_str("{\"passwords\":[");
     }
 
     for index in 0..count {
-        let password = generate_password(length, &pools, &mut random);
-        checksum = fnv1a(checksum, &password);
-        checksum = fnv1a(checksum, "\n");
+        generate_password(
+            length,
+            &pools[..pool_count],
+            &combined[..combined_len],
+            &mut random,
+            &mut password[..length],
+        );
+        checksum = fnv1a(checksum, &password[..length]);
+        checksum = fnv1a(checksum, b"\n");
 
         if as_json {
             if index > 0 {
-                print!(",");
+                writer.write_byte(b',');
             }
-            print!("\"{password}\"");
+            writer.write_byte(b'"');
+            writer.write_all(&password[..length]);
+            writer.write_byte(b'"');
         } else {
-            println!("{password}");
+            writer.write_all(&password[..length]);
+            writer.write_byte(b'\n');
         }
     }
 
     if as_json {
-        println!("],\"checksum\":\"{checksum:08x}\"}}");
+        writer.write_str("],\"checksum\":\"");
+        write_checksum(&mut writer, checksum);
+        writer.write_str("\"}\n");
     } else {
-        println!("checksum={checksum:08x}");
+        writer.write_str("checksum=");
+        write_checksum(&mut writer, checksum);
+        writer.write_byte(b'\n');
     }
+
+    writer.flush();
 }

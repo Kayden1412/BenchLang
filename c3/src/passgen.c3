@@ -177,7 +177,8 @@ fn int main(int argc, char** argv)
 	}
 
 	bool[4] selected = { false, false, false, false };
-	foreach (part : classes.tsplit(","))
+	Splitter splitter = classes.tokenize(",");
+	while (try String part = splitter.next())
 	{
 		String name = part.trim();
 		if (!name.len) continue;

@@ -7,12 +7,15 @@
 // consumption pattern identical across languages; only the OS call used to fill
 // the buffer differs. There is no seeded PRNG and no Math.random() anywhere in
 // this program.
+//
+// The buffer and offset are fixed-size state, matching Zig: no allocation,
+// refill only when fewer than four bytes remain.
 
 const { randomFillSync } = require('node:crypto');
 
 const BUFFER_SIZE = 4096;
 
-let buffer = Buffer.allocUnsafe(BUFFER_SIZE);
+const buffer = Buffer.allocUnsafe(BUFFER_SIZE);
 let offset = BUFFER_SIZE;
 
 function nextU32() {
@@ -27,10 +30,7 @@ function nextU32() {
 }
 
 function below(n) {
-  if (!Number.isInteger(n) || n <= 0) {
-    throw new RangeError('n must be a positive integer');
-  }
-  if (n === 1) {
+  if (n <= 1) {
     return 0;
   }
 

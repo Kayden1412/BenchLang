@@ -81,7 +81,9 @@ A sample of the table formats:
 C/C++, Rust, Zig, C3, Go, Python, and Node.js on Ubuntu, runs a shortened
 benchmark (`--samples 1 --runtime-samples 3`), fails unless every configured
 language passes both build and runtime validation, and uploads `results.json`
-and `RESULTS.md` as artifacts.
+and `RESULTS.md` as artifacts. The Markdown report is also appended to the
+GitHub Actions job summary, so the tables are visible without downloading the
+artifact.
 
 ## Measurement rules
 
@@ -174,7 +176,7 @@ remain:
 
 | Language | Buffer source |
 |---|---|
-| C / C++ | `getrandom(2)`, `arc4random_buf` on Android, `/dev/urandom` fallback |
+| C / C++ | `getrandom(2)`, `arc4random_buf` on Android |
 | Rust | `/dev/urandom` |
 | Go | `crypto/rand` |
 | Zig | `Io.randomSecure` |
@@ -186,6 +188,14 @@ The shared buffer is deliberate: identical buffer size, word width, byte order,
 and refill rule mean every language consumes the CSPRNG in the same pattern, so
 runtime differences reflect language/runtime overhead instead of different
 numbers of kernel calls.
+
+Generation follows the same fixed-buffer strategy as the reference Zig
+program: class pools are at most 64 bytes each, the combined pool is at most
+256 bytes, and the password buffer is 1024 bytes. Pools and the combined pool
+are built once, each password is generated in place, and output is streamed
+through a 4096-byte buffer. Native implementations perform no per-password
+heap allocation; interpreted implementations reuse fixed buffers as far as
+their runtime allows.
 
 Uniform selection uses rejection sampling over a 32-bit word with
 `limit = (2^32 / n) * n`, and the final password is shuffled with Fisher-Yates.

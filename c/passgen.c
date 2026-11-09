@@ -6,21 +6,25 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define MAX_POOL 128
+#define MAX_POOL 64
+#define MAX_COMBINED 256
 #define MAX_CLASSES 4
 #define MAX_LENGTH 1024
 #define MAX_COUNT 100000
 
 typedef struct {
-  const char *name;
   char chars[MAX_POOL];
   size_t len;
 } Pool;
 
-static const char *LOWER = "abcdefghijklmnopqrstuvwxyz";
-static const char *UPPER = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
-static const char *DIGIT = "0123456789";
-static const char *SYMBOL = "!@#$%^&*()-_=+[]{};:,.?/";
+static const char LOWER[] = "abcdefghijklmnopqrstuvwxyz";
+static const char UPPER[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+static const char DIGIT[] = "0123456789";
+static const char SYMBOL[] = "!@#$%^&*()-_=+[]{};:,.?/";
+
+static const char *CLASS_NAMES[MAX_CLASSES] = {"lower", "upper", "digit",
+                                               "symbol"};
+static const char *CLASS_SOURCES[MAX_CLASSES] = {LOWER, UPPER, DIGIT, SYMBOL};
 
 static const char *USAGE =
     "usage: passgen [options]\n"
@@ -59,32 +63,27 @@ static int is_ambiguous(char c) {
   return c == 'l' || c == 'I' || c == '1' || c == 'O' || c == '0';
 }
 
-static const char *class_source(const char *name) {
-  if (strcmp(name, "lower") == 0) {
-    return LOWER;
+static int class_index(const char *name, size_t len) {
+  for (int i = 0; i < MAX_CLASSES; i++) {
+    if (strlen(CLASS_NAMES[i]) == len &&
+        strncmp(CLASS_NAMES[i], name, len) == 0) {
+      return i;
+    }
   }
-  if (strcmp(name, "upper") == 0) {
-    return UPPER;
-  }
-  if (strcmp(name, "digit") == 0) {
-    return DIGIT;
-  }
-  if (strcmp(name, "symbol") == 0) {
-    return SYMBOL;
-  }
-  return NULL;
+  return -1;
 }
 
-static int build_pools(const char *argument, int no_ambiguous, Pool *pools,
-                       size_t *pool_count) {
+static void build_pools(const char *argument, int no_ambiguous, Pool *pools,
+                        size_t *pool_count, char *combined,
+                        size_t *combined_len) {
   int selected[MAX_CLASSES] = {0, 0, 0, 0};
   const char *cursor = argument;
 
   if (argument == NULL || *argument == '\0') {
-    return 0;
+    fail("no character classes selected");
   }
 
-  while (*cursor != '\0') {
+  for (;;) {
     const char *comma = strchr(cursor, ',');
     const char *end = (comma == NULL) ? cursor + strlen(cursor) : comma;
     const char *start = cursor;
@@ -97,30 +96,13 @@ static int build_pools(const char *argument, int no_ambiguous, Pool *pools,
     }
 
     size_t len = (size_t)(end - start);
-    int index = -1;
-
-    if (len == 0) {
-      if (comma == NULL) {
-        break;
+    if (len > 0) {
+      int index = class_index(start, len);
+      if (index < 0) {
+        fail("unknown character class");
       }
-      cursor = comma + 1;
-      continue;
+      selected[index] = 1;
     }
-
-    if (len == 5 && strncmp(start, "lower", len) == 0) {
-      index = 0;
-    } else if (len == 5 && strncmp(start, "upper", len) == 0) {
-      index = 1;
-    } else if (len == 5 && strncmp(start, "digit", len) == 0) {
-      index = 2;
-    } else if (len == 6 && strncmp(start, "symbol", len) == 0) {
-      index = 3;
-    }
-
-    if (index < 0) {
-      return 0;
-    }
-    selected[index] = 1;
 
     if (comma == NULL) {
       break;
@@ -129,45 +111,49 @@ static int build_pools(const char *argument, int no_ambiguous, Pool *pools,
   }
 
   *pool_count = 0;
+  *combined_len = 0;
+
   for (int i = 0; i < MAX_CLASSES; i++) {
     if (!selected[i]) {
       continue;
     }
 
-    const char *name = (i == 0) ? "lower" : (i == 1) ? "upper" : (i == 2) ? "digit" : "symbol";
-    const char *source = class_source(name);
+    const char *source = CLASS_SOURCES[i];
     Pool *pool = &pools[*pool_count];
     size_t written = 0;
 
-    pool->name = name;
     for (size_t j = 0; source[j] != '\0'; j++) {
       char c = source[j];
       if (no_ambiguous && is_ambiguous(c)) {
         continue;
       }
+      if (written >= MAX_POOL) {
+        fail("character class list is too long");
+      }
       pool->chars[written++] = c;
     }
     if (written == 0) {
-      return 0;
+      fail("class is empty after --no-ambiguous");
     }
-    pool->chars[written] = '\0';
     pool->len = written;
+
+    if (*combined_len + written > MAX_COMBINED) {
+      fail("character class list is too long");
+    }
+    memcpy(combined + *combined_len, pool->chars, written);
+    *combined_len += written;
     (*pool_count)++;
   }
 
-  return *pool_count > 0;
+  if (*pool_count == 0) {
+    fail("no character classes selected");
+  }
 }
 
 static void generate_password(size_t length, const Pool *pools,
-                              size_t pool_count, char *out) {
-  char combined[MAX_POOL * MAX_CLASSES];
-  size_t combined_len = 0;
+                              size_t pool_count, const char *combined,
+                              size_t combined_len, char *out) {
   size_t position = 0;
-
-  for (size_t i = 0; i < pool_count; i++) {
-    memcpy(combined + combined_len, pools[i].chars, pools[i].len);
-    combined_len += pools[i].len;
-  }
 
   for (size_t i = 0; i < pool_count; i++) {
     out[position++] = pools[i].chars[rng_below(pools[i].len)];
@@ -185,15 +171,18 @@ static void generate_password(size_t length, const Pool *pools,
   out[length] = '\0';
 }
 
-static uint32_t fnv1a(uint32_t hash, const unsigned char *data, size_t len) {
+static uint32_t fnv1a(uint32_t hash, const char *data, size_t len) {
   for (size_t i = 0; i < len; i++) {
-    hash ^= data[i];
+    hash ^= (unsigned char)data[i];
     hash *= 16777619u;
   }
   return hash;
 }
 
 int main(int argc, char **argv) {
+  static char output_buffer[4096];
+  setvbuf(stdout, output_buffer, _IOFBF, sizeof output_buffer);
+
   size_t length = 16;
   size_t count = 5;
   const char *classes = "lower,upper,digit,symbol";
@@ -236,7 +225,7 @@ int main(int argc, char **argv) {
           fail("--length must be between 1 and 1024");
         }
         length = parsed;
-      } else if (strcmp(arg, "--count") == 0) {
+      } else {
         uint32_t parsed;
         if (!parse_u32(value, &parsed) || parsed < 1 || parsed > MAX_COUNT) {
           fail("--count must be between 1 and 100000");
@@ -250,28 +239,27 @@ int main(int argc, char **argv) {
   }
 
   Pool pools[MAX_CLASSES];
+  char combined[MAX_COMBINED];
   size_t pool_count = 0;
-  if (!build_pools(classes, no_ambiguous, pools, &pool_count)) {
-    fail("invalid character class list");
-  }
+  size_t combined_len = 0;
+  build_pools(classes, no_ambiguous, pools, &pool_count, combined,
+              &combined_len);
   if (length < pool_count) {
     fail("--length is smaller than the number of selected classes");
   }
 
-  char *password = malloc(length + 1);
-  if (password == NULL) {
-    fail("out of memory");
-  }
-
+  char password[MAX_LENGTH + 1];
   uint32_t checksum = 2166136261u;
+
   if (as_json) {
     fputs("{\"passwords\":[", stdout);
   }
 
   for (size_t i = 0; i < count; i++) {
-    generate_password(length, pools, pool_count, password);
-    checksum = fnv1a(checksum, (const unsigned char *)password, length);
-    checksum = fnv1a(checksum, (const unsigned char *)"\n", 1);
+    generate_password(length, pools, pool_count, combined, combined_len,
+                      password);
+    checksum = fnv1a(checksum, password, length);
+    checksum = fnv1a(checksum, "\n", 1);
 
     if (as_json) {
       if (i > 0) {
@@ -289,6 +277,5 @@ int main(int argc, char **argv) {
     printf("checksum=%08x\n", checksum);
   }
 
-  free(password);
   return 0;
 }

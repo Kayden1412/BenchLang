@@ -1,17 +1,25 @@
 #!/usr/bin/env python3
 """Reference implementation of the AltBench passgen contract."""
 
-import json
 import sys
 
 import rng
 
-LOWER = "abcdefghijklmnopqrstuvwxyz"
-UPPER = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-DIGIT = "0123456789"
-SYMBOL = "!@#$%^&*()-_=+[]{};:,.?/"
+LOWER = b"abcdefghijklmnopqrstuvwxyz"
+UPPER = b"ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+DIGIT = b"0123456789"
+SYMBOL = b"!@#$%^&*()-_=+[]{};:,.?/"
 CLASS_ORDER = ("lower", "upper", "digit", "symbol")
-AMBIGUOUS = frozenset("lI1O0")
+SOURCES = {
+    "lower": LOWER,
+    "upper": UPPER,
+    "digit": DIGIT,
+    "symbol": SYMBOL,
+}
+AMBIGUOUS = frozenset(b"lI1O0")
+MAX_LENGTH = 1024
+MAX_COUNT = 100000
+OUTPUT_SIZE = 4096
 
 USAGE = """usage: passgen [options]
 
@@ -49,16 +57,9 @@ def parse_classes(arg: str, no_ambiguous: bool):
     for name in CLASS_ORDER:
         if name not in selected:
             continue
-        if name == "lower":
-            chars = LOWER
-        elif name == "upper":
-            chars = UPPER
-        elif name == "digit":
-            chars = DIGIT
-        else:
-            chars = SYMBOL
+        chars = SOURCES[name]
         if no_ambiguous:
-            chars = "".join(ch for ch in chars if ch not in AMBIGUOUS)
+            chars = bytes(ch for ch in chars if ch not in AMBIGUOUS)
         if not chars:
             fail(f"class {name} is empty after --no-ambiguous")
         pools.append(chars)
@@ -68,23 +69,61 @@ def parse_classes(arg: str, no_ambiguous: bool):
     return pools
 
 
-def generate(length: int, pools) -> str:
-    pool = "".join(pools)
-    chars = [p[rng.below(len(p))] for p in pools]
-    while len(chars) < length:
-        chars.append(pool[rng.below(len(pool))])
-    for i in range(len(chars) - 1, 0, -1):
+def generate(length: int, pools, combined: bytes, out: bytearray) -> None:
+    position = 0
+    for pool in pools:
+        out[position] = pool[rng.below(len(pool))]
+        position += 1
+    while position < length:
+        out[position] = combined[rng.below(len(combined))]
+        position += 1
+    for i in range(length - 1, 0, -1):
         j = rng.below(i + 1)
-        chars[i], chars[j] = chars[j], chars[i]
-    return "".join(chars)
+        out[i], out[j] = out[j], out[i]
 
 
-def fnv1a(data: bytes) -> int:
-    h = 2166136261
-    for byte in data:
-        h ^= byte
-        h = (h * 16777619) & 0xFFFFFFFF
-    return h
+def fnv1a_update(hash_value: int, data, length: int) -> int:
+    for i in range(length):
+        hash_value ^= data[i]
+        hash_value = (hash_value * 16777619) & 0xFFFFFFFF
+    return hash_value
+
+
+class Output:
+    __slots__ = ("buf", "n")
+
+    def __init__(self) -> None:
+        self.buf = bytearray(OUTPUT_SIZE)
+        self.n = 0
+
+    def flush(self) -> None:
+        if self.n:
+            sys.stdout.buffer.write(memoryview(self.buf)[: self.n])
+            self.n = 0
+
+    def write(self, data) -> None:
+        size = len(data)
+        if size >= OUTPUT_SIZE:
+            self.flush()
+            sys.stdout.buffer.write(data)
+            return
+        if self.n + size > OUTPUT_SIZE:
+            self.flush()
+        self.buf[self.n : self.n + size] = data
+        self.n += size
+
+    def write_buffer(self, data, length: int) -> None:
+        if length >= OUTPUT_SIZE:
+            self.flush()
+            sys.stdout.buffer.write(memoryview(data)[:length])
+            return
+        if self.n + length > OUTPUT_SIZE:
+            self.flush()
+        self.buf[self.n : self.n + length] = memoryview(data)[:length]
+        self.n += length
+
+    def write_hex(self, value: int) -> None:
+        self.write(f"{value:08x}".encode())
 
 
 def main(argv) -> int:
@@ -126,9 +165,9 @@ def main(argv) -> int:
             fail(f"unknown argument: {arg}")
         i += 1
 
-    if not 1 <= length <= 1024:
+    if not 1 <= length <= MAX_LENGTH:
         fail("--length must be between 1 and 1024")
-    if not 1 <= count <= 100000:
+    if not 1 <= count <= MAX_COUNT:
         fail("--count must be between 1 and 100000")
     if output_format not in ("plain", "json"):
         fail("--format must be plain or json")
@@ -137,21 +176,39 @@ def main(argv) -> int:
     if length < len(pools):
         fail("--length is smaller than the number of selected classes")
 
-    passwords = [generate(length, pools) for _ in range(count)]
-    payload = "".join(password + "\n" for password in passwords).encode()
-    checksum = f"{fnv1a(payload):08x}"
+    combined = b"".join(pools)
+    password = bytearray(MAX_LENGTH)
+    checksum = 2166136261
+    out = Output()
 
     if output_format == "json":
-        print(
-            json.dumps(
-                {"passwords": passwords, "checksum": checksum},
-                separators=(",", ":"),
-            )
-        )
+        out.write(b'{"passwords":[')
+
+    for index in range(count):
+        generate(length, pools, combined, password)
+        checksum = fnv1a_update(checksum, password, length)
+        checksum = fnv1a_update(checksum, b"\n", 1)
+
+        if output_format == "json":
+            if index:
+                out.write(b",")
+            out.write(b'"')
+            out.write_buffer(password, length)
+            out.write(b'"')
+        else:
+            out.write_buffer(password, length)
+            out.write(b"\n")
+
+    if output_format == "json":
+        out.write(b'],"checksum":"')
+        out.write_hex(checksum)
+        out.write(b'"}\n')
     else:
-        for password in passwords:
-            print(password)
-        print(f"checksum={checksum}")
+        out.write(b"checksum=")
+        out.write_hex(checksum)
+        out.write(b"\n")
+
+    out.flush()
     return 0
 
 

@@ -2,13 +2,17 @@
 //!
 //! ALT_RNG_REV_0 -- leaf file used by the incremental edit test.
 //!
-//! Uses `/dev/urandom`, which is available on Linux and the BSDs without an
-//! external crate. On Windows a different source would be required.
+//! Uses `/dev/urandom`, which is the operating system's CSPRNG on Linux and
+//! the BSDs without an external crate. There is no seeded PRNG and no
+//! fallback random source.
 //!
 //! All implementations read the system CSPRNG through the same 4096-byte
 //! buffer and consume little-endian 32-bit words. This keeps the random-value
 //! consumption pattern identical across languages; only the OS call used to
 //! fill the buffer differs.
+//!
+//! The buffer and offset are fixed-size state, matching Zig: no allocation,
+//! refill only when fewer than four bytes remain.
 
 use std::fs::File;
 use std::io::Read;
