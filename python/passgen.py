@@ -19,7 +19,6 @@ SOURCES = {
 AMBIGUOUS = frozenset(b"lI1O0")
 MAX_LENGTH = 1024
 MAX_COUNT = 100000
-OUTPUT_SIZE = 4096
 
 USAGE = """usage: passgen [options]
 
@@ -89,43 +88,6 @@ def fnv1a_update(hash_value: int, data, length: int) -> int:
     return hash_value
 
 
-class Output:
-    __slots__ = ("buf", "n")
-
-    def __init__(self) -> None:
-        self.buf = bytearray(OUTPUT_SIZE)
-        self.n = 0
-
-    def flush(self) -> None:
-        if self.n:
-            sys.stdout.buffer.write(memoryview(self.buf)[: self.n])
-            self.n = 0
-
-    def write(self, data) -> None:
-        size = len(data)
-        if size >= OUTPUT_SIZE:
-            self.flush()
-            sys.stdout.buffer.write(data)
-            return
-        if self.n + size > OUTPUT_SIZE:
-            self.flush()
-        self.buf[self.n : self.n + size] = data
-        self.n += size
-
-    def write_buffer(self, data, length: int) -> None:
-        if length >= OUTPUT_SIZE:
-            self.flush()
-            sys.stdout.buffer.write(memoryview(data)[:length])
-            return
-        if self.n + length > OUTPUT_SIZE:
-            self.flush()
-        self.buf[self.n : self.n + length] = memoryview(data)[:length]
-        self.n += length
-
-    def write_hex(self, value: int) -> None:
-        self.write(f"{value:08x}".encode())
-
-
 def main(argv) -> int:
     length = 16
     count = 5
@@ -179,7 +141,7 @@ def main(argv) -> int:
     combined = b"".join(pools)
     password = bytearray(MAX_LENGTH)
     checksum = 2166136261
-    out = Output()
+    out = sys.stdout.buffer
 
     if output_format == "json":
         out.write(b'{"passwords":[')
@@ -193,19 +155,19 @@ def main(argv) -> int:
             if index:
                 out.write(b",")
             out.write(b'"')
-            out.write_buffer(password, length)
+            out.write(memoryview(password)[:length])
             out.write(b'"')
         else:
-            out.write_buffer(password, length)
+            out.write(memoryview(password)[:length])
             out.write(b"\n")
 
     if output_format == "json":
         out.write(b'],"checksum":"')
-        out.write_hex(checksum)
+        out.write(b"%08x" % checksum)
         out.write(b'"}\n')
     else:
         out.write(b"checksum=")
-        out.write_hex(checksum)
+        out.write(b"%08x" % checksum)
         out.write(b"\n")
 
     out.flush()

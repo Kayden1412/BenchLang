@@ -3,6 +3,8 @@ const rng = @import("rng.zig");
 
 const MAX_LENGTH: usize = 1024;
 const MAX_COUNT: usize = 100000;
+const MAX_POOL: usize = 64;
+const MAX_COMBINED: usize = 256;
 
 const LOWER = "abcdefghijklmnopqrstuvwxyz";
 const UPPER = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -25,7 +27,8 @@ const USAGE =
 ;
 
 const Pool = struct {
-    chars: []const u8,
+    chars: [MAX_POOL]u8,
+    len: usize,
 };
 
 fn fail(message: []const u8) noreturn {
@@ -46,22 +49,22 @@ fn isAmbiguous(c: u8) bool {
     return c == 'l' or c == 'I' or c == '1' or c == 'O' or c == '0';
 }
 
-fn buildPool(source: []const u8, no_ambiguous: bool, buffer: []u8) []const u8 {
+fn buildPool(source: []const u8, no_ambiguous: bool, pool: *Pool) void {
     var len: usize = 0;
     for (source) |c| {
         if (no_ambiguous and isAmbiguous(c)) {
             continue;
         }
-        buffer[len] = c;
+        pool.chars[len] = c;
         len += 1;
     }
-    return buffer[0..len];
+    pool.len = len;
 }
 
 fn generate(io: std.Io, length: usize, pools: []const Pool, combined: []const u8, out: []u8) void {
     var position: usize = 0;
     for (pools) |pool| {
-        out[position] = pool.chars[rng.below(io, pool.chars.len)];
+        out[position] = pool.chars[rng.below(io, pool.len)];
         position += 1;
     }
     while (position < length) : (position += 1) {
@@ -84,19 +87,6 @@ fn fnv1a(hash: u32, text: []const u8) u32 {
         h *%= 16777619;
     }
     return h;
-}
-
-fn writeChecksum(writer: *std.Io.Writer, value: u32) !void {
-    const digits = "0123456789abcdef";
-    var buffer: [8]u8 = undefined;
-    var v = value;
-    var i: usize = buffer.len;
-    while (i > 0) {
-        i -= 1;
-        buffer[i] = digits[v & 0xf];
-        v >>= 4;
-    }
-    try writer.writeAll(&buffer);
 }
 
 pub fn main(init: std.process.Init) !void {
@@ -180,8 +170,7 @@ pub fn main(init: std.process.Init) !void {
         selected[index] = true;
     }
 
-    var pool_buffers: [4][64]u8 = undefined;
-    var combined_buffer: [256]u8 = undefined;
+    var combined_buffer: [MAX_COMBINED]u8 = undefined;
     var combined_len: usize = 0;
     var pools: [4]Pool = undefined;
     var pool_count: usize = 0;
@@ -190,14 +179,14 @@ pub fn main(init: std.process.Init) !void {
         if (!selected[index]) {
             continue;
         }
-        const chars = buildPool(source, no_ambiguous, &pool_buffers[index]);
-        if (chars.len == 0) {
+        const pool = &pools[pool_count];
+        buildPool(source, no_ambiguous, pool);
+        if (pool.len == 0) {
             fail("class is empty after --no-ambiguous");
         }
-        pools[pool_count] = .{ .chars = chars };
         pool_count += 1;
 
-        for (chars) |c| {
+        for (pool.chars[0..pool.len]) |c| {
             combined_buffer[combined_len] = c;
             combined_len += 1;
         }
@@ -240,13 +229,9 @@ pub fn main(init: std.process.Init) !void {
     }
 
     if (as_json) {
-        try stdout.writeAll("],\"checksum\":\"");
-        try writeChecksum(stdout, checksum);
-        try stdout.writeAll("\"}\n");
+        try stdout.print("],\"checksum\":\"{x:0>8}\"}}\n", .{checksum});
     } else {
-        try stdout.writeAll("checksum=");
-        try writeChecksum(stdout, checksum);
-        try stdout.writeAll("\n");
+        try stdout.print("checksum={x:0>8}\n", .{checksum});
     }
 
     try stdout.flush();

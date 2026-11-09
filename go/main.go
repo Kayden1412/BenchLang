@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"fmt"
 	"os"
 	"strconv"
@@ -35,55 +36,6 @@ var newline = [1]byte{'\n'}
 type pool struct {
 	chars [maxPool]byte
 	len   int
-}
-
-type output struct {
-	buf [outputSize]byte
-	n   int
-}
-
-func (o *output) flush() {
-	if o.n > 0 {
-		os.Stdout.Write(o.buf[:o.n])
-		o.n = 0
-	}
-}
-
-func (o *output) write(data []byte) {
-	if len(data) >= outputSize {
-		o.flush()
-		os.Stdout.Write(data)
-		return
-	}
-	if o.n+len(data) > outputSize {
-		o.flush()
-	}
-	copy(o.buf[o.n:], data)
-	o.n += len(data)
-}
-
-func (o *output) writeByte(b byte) {
-	if o.n == outputSize {
-		o.flush()
-	}
-	o.buf[o.n] = b
-	o.n++
-}
-
-func (o *output) writeString(s string) {
-	for i := 0; i < len(s); i++ {
-		o.writeByte(s[i])
-	}
-}
-
-func (o *output) writeHex(value uint32) {
-	const digits = "0123456789abcdef"
-	var buf [8]byte
-	for i := 7; i >= 0; i-- {
-		buf[i] = digits[value&0xf]
-		value >>= 4
-	}
-	o.write(buf[:])
 }
 
 func fail(message string) {
@@ -267,10 +219,10 @@ func main() {
 
 	var password [maxLength]byte
 	var checksum uint32 = 2166136261
-	var out output
+	out := bufio.NewWriterSize(os.Stdout, outputSize)
 
 	if asJSON {
-		out.writeString("{\"passwords\":[")
+		out.WriteString("{\"passwords\":[")
 	}
 
 	for index := 0; index < count; index++ {
@@ -280,26 +232,22 @@ func main() {
 
 		if asJSON {
 			if index > 0 {
-				out.writeByte(',')
+				out.WriteByte(',')
 			}
-			out.writeByte('"')
-			out.write(password[:length])
-			out.writeByte('"')
+			out.WriteByte('"')
+			out.Write(password[:length])
+			out.WriteByte('"')
 		} else {
-			out.write(password[:length])
-			out.writeByte('\n')
+			out.Write(password[:length])
+			out.WriteByte('\n')
 		}
 	}
 
 	if asJSON {
-		out.writeString("],\"checksum\":\"")
-		out.writeHex(checksum)
-		out.writeString("\"}\n")
+		fmt.Fprintf(out, "],\"checksum\":\"%08x\"}\n", checksum)
 	} else {
-		out.writeString("checksum=")
-		out.writeHex(checksum)
-		out.writeByte('\n')
+		fmt.Fprintf(out, "checksum=%08x\n", checksum)
 	}
 
-	out.flush()
+	out.Flush()
 }

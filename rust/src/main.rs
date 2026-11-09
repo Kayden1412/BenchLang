@@ -1,5 +1,7 @@
 mod rng;
 
+use std::io::{BufWriter, Write};
+
 use rng::Random;
 
 const MAX_LENGTH: usize = 1024;
@@ -129,78 +131,6 @@ fn fnv1a(mut hash: u32, data: &[u8]) -> u32 {
     hash
 }
 
-struct Writer {
-    buffer: [u8; 4096],
-    len: usize,
-}
-
-impl Writer {
-    fn new() -> Self {
-        Self {
-            buffer: [0u8; 4096],
-            len: 0,
-        }
-    }
-
-    fn flush(&mut self) {
-        if self.len > 0 {
-            use std::io::Write;
-            std::io::stdout()
-                .write_all(&self.buffer[..self.len])
-                .expect("failed to write stdout");
-            self.len = 0;
-        }
-    }
-
-    fn write_all(&mut self, data: &[u8]) {
-        if data.len() >= self.buffer.len() {
-            self.flush();
-            use std::io::Write;
-            std::io::stdout()
-                .write_all(data)
-                .expect("failed to write stdout");
-            return;
-        }
-
-        if self.len + data.len() > self.buffer.len() {
-            self.flush();
-        }
-
-        self.buffer[self.len..self.len + data.len()].copy_from_slice(data);
-        self.len += data.len();
-    }
-
-    fn write_byte(&mut self, byte: u8) {
-        if self.len == self.buffer.len() {
-            self.flush();
-        }
-        self.buffer[self.len] = byte;
-        self.len += 1;
-    }
-
-    fn write_str(&mut self, text: &str) {
-        self.write_all(text.as_bytes());
-    }
-}
-
-impl Drop for Writer {
-    fn drop(&mut self) {
-        self.flush();
-    }
-}
-
-fn write_checksum(writer: &mut Writer, value: u32) {
-    const DIGITS: &[u8; 16] = b"0123456789abcdef";
-    let mut buffer = [0u8; 8];
-    let mut v = value;
-
-    for i in (0..buffer.len()).rev() {
-        buffer[i] = DIGITS[(v & 0xf) as usize];
-        v >>= 4;
-    }
-    writer.write_all(&buffer);
-}
-
 fn main() {
     let mut length = 16usize;
     let mut count = 5usize;
@@ -266,10 +196,13 @@ fn main() {
     let mut random = Random::new().unwrap_or_else(|_| fail("CSPRNG failure"));
     let mut password = [0u8; MAX_LENGTH];
     let mut checksum = 2166136261u32;
-    let mut writer = Writer::new();
+    let stdout = std::io::stdout();
+    let mut writer = BufWriter::with_capacity(4096, stdout.lock());
 
     if as_json {
-        writer.write_str("{\"passwords\":[");
+        writer
+            .write_all(b"{\"passwords\":[")
+            .expect("failed to write stdout");
     }
 
     for index in 0..count {
@@ -285,26 +218,26 @@ fn main() {
 
         if as_json {
             if index > 0 {
-                writer.write_byte(b',');
+                writer.write_all(b",").expect("failed to write stdout");
             }
-            writer.write_byte(b'"');
-            writer.write_all(&password[..length]);
-            writer.write_byte(b'"');
+            writer.write_all(b"\"").expect("failed to write stdout");
+            writer
+                .write_all(&password[..length])
+                .expect("failed to write stdout");
+            writer.write_all(b"\"").expect("failed to write stdout");
         } else {
-            writer.write_all(&password[..length]);
-            writer.write_byte(b'\n');
+            writer
+                .write_all(&password[..length])
+                .expect("failed to write stdout");
+            writer.write_all(b"\n").expect("failed to write stdout");
         }
     }
 
     if as_json {
-        writer.write_str("],\"checksum\":\"");
-        write_checksum(&mut writer, checksum);
-        writer.write_str("\"}\n");
+        write!(writer, "],\"checksum\":\"{checksum:08x}\"}}\n").expect("failed to write stdout");
     } else {
-        writer.write_str("checksum=");
-        write_checksum(&mut writer, checksum);
-        writer.write_byte(b'\n');
+        write!(writer, "checksum={checksum:08x}\n").expect("failed to write stdout");
     }
 
-    writer.flush();
+    writer.flush().expect("failed to write stdout");
 }
